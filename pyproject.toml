@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytaskai"
-version = "0.0.1"
+version = "0.0.2"
 description = "AI-powered task management system with MCP (Model Context Protocol) integration for seamless workflow automation"
 readme = "README.md"
 license = {text = "MIT with Commons Clause"}
