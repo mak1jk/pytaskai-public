@@ -1772,6 +1772,285 @@ def update_task_test_coverage_tool(
 
 
 @mcp.tool()
+async def report_bug_tool(
+    project_root: str,
+    title: str,
+    description: str,
+    severity: str = "medium",
+    priority: str = "high",
+    steps_to_reproduce: Optional[str] = None,
+    expected_result: Optional[str] = None,
+    actual_result: Optional[str] = None,
+    environment: Optional[str] = None,
+    related_task_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Strumento dedicato per la segnalazione rapida di bug.
+    
+    Semplifica il processo di creazione di bug report con campi pre-configurati
+    e validazione specifica per bug tracking.
+    
+    Args:
+        project_root: Path assoluto alla directory del progetto
+        title: Titolo breve del bug
+        description: Descrizione dettagliata del problema
+        severity: Gravità del bug (critical, high, medium, low)
+        priority: Priorità (highest, high, medium, low, lowest)
+        steps_to_reproduce: Passi per riprodurre il bug
+        expected_result: Comportamento atteso
+        actual_result: Comportamento osservato
+        environment: Ambiente dove si verifica il bug
+        related_task_id: ID del task correlato (opzionale)
+    
+    Returns:
+        Dict contenente il bug report creato e metadati
+    """
+    try:
+        logger.info(f"Creating bug report: {title[:50]}...")
+        
+        # Validate severity
+        valid_severities = ["critical", "high", "medium", "low"]
+        if severity not in valid_severities:
+            return {
+                "error": f"Invalid severity: {severity}. Valid severities: {valid_severities}",
+                "project_root": project_root,
+            }
+        
+        # Validate priority
+        valid_priorities = ["highest", "high", "medium", "low", "lowest"]
+        if priority not in valid_priorities:
+            return {
+                "error": f"Invalid priority: {priority}. Valid priorities: {valid_priorities}",
+                "project_root": project_root,
+            }
+        
+        # Enhanced description for bug reports
+        enhanced_description = description
+        
+        if steps_to_reproduce:
+            enhanced_description += f"\n\n**Steps to Reproduce:**\n{steps_to_reproduce}"
+        
+        if expected_result:
+            enhanced_description += f"\n\n**Expected Result:**\n{expected_result}"
+        
+        if actual_result:
+            enhanced_description += f"\n\n**Actual Result:**\n{actual_result}"
+        
+        if environment:
+            enhanced_description += f"\n\n**Environment:**\n{environment}"
+        
+        if related_task_id:
+            enhanced_description += f"\n\n**Related Task:** #{related_task_id}"
+        
+        # Set dependencies if related task provided
+        dependencies = [related_task_id] if related_task_id else []
+        dependencies_str = str(related_task_id) if related_task_id else None
+        
+        # Create bug using add_task_tool
+        result = await add_task_tool(
+            project_root=project_root,
+            prompt=enhanced_description,
+            task_type="bug",
+            severity=severity,
+            priority=priority,
+            steps_to_reproduce=steps_to_reproduce,
+            expected_result=expected_result,
+            actual_result=actual_result,
+            environment=environment,
+            dependencies=dependencies_str,
+            use_research=False,  # Bug reports typically don't need research
+        )
+        
+        if result.get("error"):
+            return {
+                "error": f"Failed to create bug report: {result['error']}",
+                "project_root": project_root,
+            }
+        
+        # Enhance response with bug-specific information
+        bug_id = result.get("task_id")
+        bug_data = result.get("task", {})
+        
+        # Add bug report metadata
+        bug_report_info = {
+            "bug_id": bug_id,
+            "bug_type": "bug",
+            "severity": severity,
+            "priority": priority,
+            "title": title,
+            "created_at": datetime.now().isoformat(),
+            "has_reproduction_steps": bool(steps_to_reproduce),
+            "has_environment_info": bool(environment),
+            "is_related_to_task": bool(related_task_id),
+        }
+        
+        # Generate bug tracking recommendations
+        recommendations = []
+        
+        if severity in ["critical", "high"]:
+            recommendations.append("High severity bug - consider immediate attention")
+        
+        if not steps_to_reproduce:
+            recommendations.append("Consider adding reproduction steps for faster debugging")
+        
+        if not environment:
+            recommendations.append("Add environment details to help with debugging")
+        
+        if not expected_result or not actual_result:
+            recommendations.append("Clarify expected vs actual behavior for better understanding")
+        
+        logger.info(f"Bug report created successfully: #{bug_id}")
+        
+        return {
+            "success": True,
+            "message": f"Bug report created successfully: #{bug_id}",
+            "bug_report": bug_report_info,
+            "recommendations": recommendations,
+            "task": bug_data,
+            "project_root": project_root,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating bug report: {str(e)}")
+        return {
+            "error": f"Failed to create bug report: {str(e)}",
+            "title": title,
+            "project_root": project_root,
+        }
+
+
+@mcp.tool()
+def get_bug_statistics_tool(
+    project_root: str,
+    include_resolved: bool = False,
+    group_by: str = "severity"
+) -> Dict[str, Any]:
+    """
+    Ottieni statistiche sui bug del progetto.
+    
+    Args:
+        project_root: Path assoluto alla directory del progetto
+        include_resolved: Include bug risolti nelle statistiche
+        group_by: Raggruppa per (severity, priority, status, environment)
+    
+    Returns:
+        Dict contenente statistiche dettagliate sui bug
+    """
+    try:
+        logger.info(f"Generating bug statistics for project: {project_root}")
+        
+        # Load all tasks
+        result = list_tasks_tool(
+            project_root=project_root,
+            type_filter="bug",
+            include_subtasks=False
+        )
+        
+        if result.get("error"):
+            return {
+                "error": f"Failed to load bugs: {result['error']}",
+                "project_root": project_root,
+            }
+        
+        bugs = result.get("tasks", [])
+        
+        # Filter out resolved bugs if requested
+        if not include_resolved:
+            bugs = [bug for bug in bugs if bug.get("status") != "done"]
+        
+        # Calculate statistics
+        total_bugs = len(bugs)
+        
+        # Group by requested field
+        grouped_stats = {}
+        valid_group_fields = ["severity", "priority", "status", "environment"]
+        
+        if group_by not in valid_group_fields:
+            group_by = "severity"
+        
+        for bug in bugs:
+            group_value = bug.get(group_by, "unknown")
+            if group_value not in grouped_stats:
+                grouped_stats[group_value] = {
+                    "count": 0,
+                    "percentage": 0,
+                    "bugs": []
+                }
+            grouped_stats[group_value]["count"] += 1
+            grouped_stats[group_value]["bugs"].append({
+                "id": bug.get("id"),
+                "title": bug.get("title"),
+                "status": bug.get("status"),
+                "severity": bug.get("severity"),
+                "created_at": bug.get("created_at")
+            })
+        
+        # Calculate percentages
+        for group_value, stats in grouped_stats.items():
+            stats["percentage"] = (stats["count"] / max(total_bugs, 1)) * 100
+        
+        # Calculate severity distribution (always include this)
+        severity_distribution = {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "unknown": 0
+        }
+        
+        for bug in bugs:
+            severity = bug.get("severity", "unknown")
+            severity_distribution[severity] = severity_distribution.get(severity, 0) + 1
+        
+        # Calculate status distribution
+        status_distribution = {}
+        for bug in bugs:
+            status = bug.get("status", "unknown")
+            status_distribution[status] = status_distribution.get(status, 0) + 1
+        
+        # Find oldest unresolved bugs
+        unresolved_bugs = [bug for bug in bugs if bug.get("status") not in ["done", "cancelled"]]
+        oldest_bugs = sorted(unresolved_bugs, key=lambda x: x.get("created_at", ""))[:5]
+        
+        # Calculate metrics
+        critical_high_count = severity_distribution.get("critical", 0) + severity_distribution.get("high", 0)
+        resolution_rate = 0
+        if include_resolved:
+            all_bugs_result = list_tasks_tool(project_root=project_root, type_filter="bug")
+            all_bugs = all_bugs_result.get("tasks", [])
+            resolved_bugs = len([b for b in all_bugs if b.get("status") == "done"])
+            resolution_rate = (resolved_bugs / max(len(all_bugs), 1)) * 100
+        
+        logger.info(f"Bug statistics generated: {total_bugs} bugs analyzed")
+        
+        return {
+            "success": True,
+            "statistics": {
+                "total_bugs": total_bugs,
+                "critical_high_count": critical_high_count,
+                "resolution_rate": resolution_rate,
+                "grouped_by": group_by,
+                "grouped_stats": grouped_stats,
+                "severity_distribution": severity_distribution,
+                "status_distribution": status_distribution,
+                "oldest_unresolved": oldest_bugs,
+            },
+            "metadata": {
+                "include_resolved": include_resolved,
+                "generated_at": datetime.now().isoformat(),
+                "project_root": project_root,
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating bug statistics: {str(e)}")
+        return {
+            "error": f"Failed to generate bug statistics: {str(e)}",
+            "project_root": project_root,
+        }
+
+
+@mcp.tool()
 async def expand_task_tool(
     project_root: str,
     task_id: Union[int, str],
@@ -3518,6 +3797,9 @@ __all__ = [
     "check_budget_status_tool",
     "set_task_status_tool",
     "add_task_tool",
+    "update_task_test_coverage_tool",
+    "report_bug_tool",
+    "get_bug_statistics_tool",
     "expand_task_tool",
     "add_dependency_tool",
     "remove_dependency_tool",

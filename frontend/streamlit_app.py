@@ -86,13 +86,15 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Choose a page",
-        ["Dashboard", "Task Management", "PRD Parser", "AI Assistant", "Settings"],
+        ["Dashboard", "Task Management", "Bug Analytics", "PRD Parser", "AI Assistant", "Settings"],
     )
 
     if page == "Dashboard":
         show_dashboard()
     elif page == "Task Management":
         show_task_management()
+    elif page == "Bug Analytics":
+        show_bug_analytics()
     elif page == "PRD Parser":
         show_prd_parser()
     elif page == "AI Assistant":
@@ -659,6 +661,24 @@ def show_settings():
 
     if st.button("💾 Save Settings"):
         st.success("Settings would be saved!")
+
+
+def show_bug_analytics():
+    """Display bug analytics dashboard"""
+    try:
+        from components.bug_analytics import render_bug_analytics_dashboard, render_quick_bug_report_form
+        
+        # Main analytics dashboard
+        render_bug_analytics_dashboard(st.session_state.project_root)
+        
+        # Quick bug report form
+        st.markdown("---")
+        render_quick_bug_report_form(st.session_state.project_root)
+        
+    except ImportError:
+        st.error("Bug analytics component not available")
+    except Exception as e:
+        st.error(f"Error loading bug analytics: {str(e)}")
 
 
 if __name__ == "__main__":

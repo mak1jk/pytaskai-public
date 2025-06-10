@@ -1,5 +1,43 @@
 # PyTaskAI Changelog
 
+## 0.0.5 - 2025-01-06
+
+### 🚀 Advanced Features
+- **Dedicated Bug Reporting Tool**: New `report_bug_tool` MCP tool for streamlined bug reporting
+  - Enhanced validation and recommendations
+  - Automatic bug report formatting
+  - Integration with related tasks
+- **Bug Analytics Dashboard**: Comprehensive bug statistics and visualization
+  - Severity and status distribution charts
+  - Bug trend analysis and resolution metrics
+  - Actionable recommendations based on bug data
+- **Jira Integration Architecture**: Foundation for bidirectional Jira sync
+  - Task-to-Jira mapping strategies
+  - Configurable sync options and conflict resolution
+  - Intelligent issue type determination
+
+### 🔧 Enhanced MCP Tools
+- **`report_bug_tool`**: Dedicated bug reporting with enhanced validation
+- **`get_bug_statistics_tool`**: Comprehensive bug analytics and metrics
+- **Quick Bug Report Form**: Streamlit UI component for rapid bug reporting
+
+### 📊 Analytics & Insights  
+- **Bug Metrics Dashboard**: Visual analytics for bug tracking
+- **Resolution Rate Tracking**: Monitor bug resolution efficiency
+- **Severity Distribution Analysis**: Understand bug impact patterns
+- **Historical Trend Analysis**: Track bug patterns over time
+
+### 🎨 UI Enhancements
+- **Bug Analytics Page**: Dedicated Streamlit page for bug insights
+- **Interactive Charts**: Plotly-powered bug visualization
+- **Quick Action Forms**: Streamlined bug reporting interface
+- **Recommendations Engine**: Automated suggestions based on bug data
+
+### 📚 Architecture Improvements
+- **Modular Component System**: Reusable Streamlit components
+- **Enhanced Error Handling**: Better error reporting and recovery
+- **Flexible Configuration**: Extensible settings for integrations
+
 ## 0.0.4 - 2025-01-06
 
 ### 🚀 New Features
