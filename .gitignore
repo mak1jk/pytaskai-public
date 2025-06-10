@@ -112,3 +112,6 @@ test-project/
 local_test/
 debug/ 
 CLAUDE.md
+.windsurfrules
+.gitignore
+.cursor/rules/project_specific_rules.mdc
