@@ -1,12 +1,44 @@
-# Changelog
+# PyTaskAI Changelog
 
-## 1.0.1
+## 0.0.3 - 2025-01-06
+
+### 🚀 Features
+- **LiteLLM Integration**: Complete integration with real AI providers (OpenAI, Anthropic, Perplexity, Google, xAI)
+- **Environment Configuration**: Comprehensive `.env` support for API keys and model configuration
+- **Fallback Strategy**: Intelligent model fallback when primary providers are unavailable
+- **Cost Tracking**: Built-in usage tracking and budget management
+
+### 🐛 Bug Fixes  
+- **MCP Tools**: Fixed AsyncIO event loop conflicts preventing task creation
+- **Path Issues**: Resolved `.taskmaster` path problems, now uses `.pytaskai` correctly
+- **Error Handling**: Improved error handling and graceful degradation
+- **Code Structure**: Fixed code corruption in ai_service.py
+
+### 🔧 Technical Improvements
+- All MCP tools now properly async/await compatible
+- Enhanced project root validation and path management
+- Better try/catch error handling throughout codebase
+- Improved logging and debugging capabilities
+
+### 📚 Documentation
+- Updated PRD with LiteLLM integration requirements
+- Added comprehensive `.env.example` configuration file
+- Enhanced implementation guides and troubleshooting
+
+### 🔒 Security
+- API keys managed through environment variables
+- No hardcoded credentials in codebase
+- Secure configuration management
+
+## 0.0.1 - 2025-01-01
+
+### 🎉 Initial Release
 
 - Added `DISABLE_INTERLEAVED_THINKING` to give users the option to opt out of interleaved thinking.
 - Improved model references to show provider-specific names (Sonnet 3.7 for Bedrock, Sonnet 4 for Console)
 - Updated documentation links and OAuth process descriptions
 
-## 1.0.0
+## 0.3.0
 
 - Claude Code is now generally available
 - Introducing Sonnet 4 and Opus 4 models

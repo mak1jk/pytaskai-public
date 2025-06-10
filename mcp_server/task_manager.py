@@ -11,9 +11,12 @@ from datetime import datetime
 from fastmcp import FastMCP
 
 from .utils import (
-    load_tasks, save_tasks, validate_tasks_file, 
-    get_tasks_statistics, ensure_directories_exist,
-    get_reports_directory # PyTaskAI: Added for standardized report paths
+    load_tasks,
+    save_tasks,
+    validate_tasks_file,
+    get_tasks_statistics,
+    ensure_directories_exist,
+    get_reports_directory,  # PyTaskAI: Added for standardized report paths
 )
 
 # Configure logging
@@ -22,242 +25,246 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("PyTaskAI MCP Server")
 
+
 @mcp.tool()
 def list_tasks_tool(
     project_root: str,
     status_filter: Optional[str] = None,
     priority_filter: Optional[str] = None,
     include_subtasks: bool = True,
-    include_stats: bool = False
+    include_stats: bool = False,
 ) -> Dict[str, Any]:
     """
     Lista tutti i task del progetto con filtri opzionali.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         status_filter: Filtra per status (pending, in-progress, done, cancelled)
         priority_filter: Filtra per priorità (high, medium, low)
         include_subtasks: Includi i subtask nella risposta
         include_stats: Includi statistiche del progetto
-        
+
     Returns:
         Dict contenente lista task e metadati
     """
     try:
         logger.info(f"Loading tasks from project: {project_root}")
-        
+
         # Ensure directory structure exists
         ensure_directories_exist(project_root)
-        
+
         # Load tasks from tasks.json
         data = load_tasks(project_root)
-        
+
         if not data:
             return {
                 "tasks": [],
                 "total_count": 0,
                 "message": "No tasks found or tasks.json does not exist",
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
-        
+
         # Apply status filter
         if status_filter:
             tasks = [task for task in tasks if task.get("status") == status_filter]
-        
-        # Apply priority filter  
+
+        # Apply priority filter
         if priority_filter:
             tasks = [task for task in tasks if task.get("priority") == priority_filter]
-        
+
         # Filter subtasks if requested
         if not include_subtasks:
             for task in tasks:
                 if "subtasks" in task:
                     del task["subtasks"]
-        
+
         result = {
             "tasks": tasks,
             "total_count": len(tasks),
             "filters_applied": {
                 "status": status_filter,
                 "priority": priority_filter,
-                "include_subtasks": include_subtasks
+                "include_subtasks": include_subtasks,
             },
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add statistics if requested
         if include_stats:
             all_tasks = load_tasks(project_root).get("tasks", [])
             stats = get_tasks_statistics(all_tasks)
             result["statistics"] = stats
-        
+
         logger.info(f"Successfully loaded {len(tasks)} tasks")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error loading tasks: {str(e)}")
         return {
             "error": f"Failed to load tasks: {str(e)}",
             "tasks": [],
             "total_count": 0,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def get_task_tool(
-    project_root: str, 
-    task_id: Union[int, str],
-    include_subtasks: bool = True
+    project_root: str, task_id: Union[int, str], include_subtasks: bool = True
 ) -> Dict[str, Any]:
     """
     Ottieni un task specifico per ID.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task da recuperare
         include_subtasks: Includi i subtask nella risposta
-        
+
     Returns:
         Dict contenente il task richiesto
     """
     try:
         logger.info(f"Getting task {task_id} from project: {project_root}")
-        
+
         data = load_tasks(project_root)
         if not data:
             return {
                 "error": "No tasks file found",
                 "task": None,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
         task_id = int(task_id)
-        
+
         # Find the task
         task = None
         for t in tasks:
             if t.get("id") == task_id:
                 task = t.copy()
                 break
-        
+
         if not task:
             return {
                 "error": f"Task with ID {task_id} not found",
                 "task": None,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Filter subtasks if requested
         if not include_subtasks and "subtasks" in task:
             del task["subtasks"]
-        
+
         logger.info(f"Successfully retrieved task {task_id}")
-        return {
-            "task": task,
-            "task_id": task_id,
-            "project_root": project_root
-        }
-        
+        return {"task": task, "task_id": task_id, "project_root": project_root}
+
     except Exception as e:
         logger.error(f"Error getting task {task_id}: {str(e)}")
         return {
             "error": f"Failed to get task {task_id}: {str(e)}",
             "task": None,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def get_next_task_tool(
-    project_root: str,
-    exclude_dependencies: bool = False
+    project_root: str, exclude_dependencies: bool = False
 ) -> Dict[str, Any]:
     """
     Trova il prossimo task da eseguire basato su dipendenze e priorità.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         exclude_dependencies: Ignora le dipendenze nella selezione
-        
+
     Returns:
         Dict contenente il prossimo task consigliato
     """
     try:
         logger.info(f"Finding next task for project: {project_root}")
-        
+
         data = load_tasks(project_root)
         if not data:
             return {
                 "error": "No tasks file found",
                 "next_task": None,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
-        
+
         # Find pending tasks
         pending_tasks = [t for t in tasks if t.get("status") == "pending"]
-        
+
         if not pending_tasks:
             return {
                 "message": "No pending tasks found",
                 "next_task": None,
                 "completed_tasks": len([t for t in tasks if t.get("status") == "done"]),
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # If ignoring dependencies, just return highest priority pending task
         if exclude_dependencies:
             priority_order = {"high": 3, "medium": 2, "low": 1}
             pending_tasks.sort(
-                key=lambda x: (priority_order.get(x.get("priority", "medium"), 2), x.get("id", 0)),
-                reverse=True
+                key=lambda x: (
+                    priority_order.get(x.get("priority", "medium"), 2),
+                    x.get("id", 0),
+                ),
+                reverse=True,
             )
             next_task = pending_tasks[0]
         else:
             # Find tasks with no unfulfilled dependencies
             done_task_ids = {t.get("id") for t in tasks if t.get("status") == "done"}
-            
+
             available_tasks = []
             for task in pending_tasks:
                 dependencies = task.get("dependencies", [])
-                if not dependencies or all(dep_id in done_task_ids for dep_id in dependencies):
+                if not dependencies or all(
+                    dep_id in done_task_ids for dep_id in dependencies
+                ):
                     available_tasks.append(task)
-            
+
             if not available_tasks:
                 return {
                     "message": "No tasks available (pending tasks have unfulfilled dependencies)",
                     "next_task": None,
                     "pending_with_dependencies": len(pending_tasks),
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-            
+
             # Sort by priority and ID
             priority_order = {"high": 3, "medium": 2, "low": 1}
             available_tasks.sort(
-                key=lambda x: (priority_order.get(x.get("priority", "medium"), 2), x.get("id", 0)),
-                reverse=True
+                key=lambda x: (
+                    priority_order.get(x.get("priority", "medium"), 2),
+                    x.get("id", 0),
+                ),
+                reverse=True,
             )
             next_task = available_tasks[0]
-        
-        logger.info(f"Next task selected: {next_task.get('id')} - {next_task.get('title')}")
+
+        logger.info(
+            f"Next task selected: {next_task.get('id')} - {next_task.get('title')}"
+        )
         return {
             "next_task": next_task,
             "available_tasks_count": len(pending_tasks),
             "recommendation": f"Task {next_task.get('id')}: {next_task.get('title')}",
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
     except Exception as e:
         logger.error(f"Error finding next task: {str(e)}")
         return {
             "error": f"Failed to find next task: {str(e)}",
             "next_task": None,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -265,37 +272,37 @@ def get_next_task_tool(
 def validate_tasks_tool(project_root: str) -> Dict[str, Any]:
     """
     Valida la struttura e integrità del file tasks.json.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
-        
+
     Returns:
         Dict contenente risultati della validazione
     """
     try:
         logger.info(f"Validating tasks file for project: {project_root}")
-        
+
         # Validate file structure and content
         is_valid, errors, warnings = validate_tasks_file(project_root)
-        
+
         data = load_tasks(project_root)
         stats = get_tasks_statistics(data.get("tasks", [])) if data else {}
-        
+
         result = {
             "is_valid": is_valid,
             "errors": errors,
             "warnings": warnings,
             "statistics": stats,
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         if is_valid:
             logger.info("Tasks file validation passed")
         else:
             logger.warning(f"Tasks file validation failed: {errors}")
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Error validating tasks: {str(e)}")
         return {
@@ -303,45 +310,46 @@ def validate_tasks_tool(project_root: str) -> Dict[str, Any]:
             "errors": [f"Validation failed: {str(e)}"],
             "warnings": [],
             "statistics": {},
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def init_claude_support_tool(
-    project_root: str,
-    include_windsurfrules: bool = True
+    project_root: str, include_windsurfrules: bool = True
 ) -> Dict[str, Any]:
     """
     Inizializza il supporto Claude Code per il progetto.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         include_windsurfrules: Se generare anche .windsurfrules
-        
+
     Returns:
         Dict contenente risultati dell'operazione
     """
     try:
         from .claude_code_setup import init_claude_support
-        
-        logger.info(f"Initializing Claude Code support via MCP tool for: {project_root}")
-        
+
+        logger.info(
+            f"Initializing Claude Code support via MCP tool for: {project_root}"
+        )
+
         result = init_claude_support(
             mcp_instance=mcp,
             project_root=project_root,
-            include_windsurfrules=include_windsurfrules
+            include_windsurfrules=include_windsurfrules,
         )
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Error in init_claude_support_tool: {str(e)}")
         return {
             "success": False,
             "error": f"Failed to initialize Claude Code support: {str(e)}",
             "created_files": [],
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -352,11 +360,11 @@ async def parse_prd_tool(
     target_tasks_count: int = 10,
     use_research: bool = False,
     use_lts_deps: bool = True,
-    overwrite_existing: bool = False
+    overwrite_existing: bool = False,
 ) -> Dict[str, Any]:
     """
     Parsa un PRD e genera automaticamente task usando l'AI Service.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         prd_content: Contenuto del PRD da parsare
@@ -364,32 +372,33 @@ async def parse_prd_tool(
         use_research: Se utilizzare funzionalità di ricerca per generazione task
         use_lts_deps: Se preferire versioni LTS delle dipendenze
         overwrite_existing: Se sovrascrivere task esistenti
-        
+
     Returns:
         Dict contenente risultati dell'operazione e task generati
     """
     try:
         logger.info(f"Parsing PRD for project: {project_root}")
-        
+
         # Ensure directory structure exists
         ensure_directories_exist(project_root)
-        
+
         # Check if tasks already exist
         existing_data = load_tasks(project_root)
         existing_tasks = existing_data.get("tasks", []) if existing_data else []
-        
+
         if existing_tasks and not overwrite_existing:
             return {
                 "error": "Tasks file already exists. Use overwrite_existing=True to replace",
                 "existing_tasks_count": len(existing_tasks),
                 "generated_tasks": [],
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Initialize AI Service
         from .ai_service import AIService
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Prepare prompt for task generation from PRD
         generation_prompt = f"""
 Analizza il seguente PRD e genera {target_tasks_count} task di sviluppo ben strutturati.
@@ -418,52 +427,54 @@ Genera una lista di task JSON, ognuno con:
 
 Rispondi SOLO con JSON valido contenente array di task.
         """
-        
+
         # Generate tasks using AI
         logger.info("Generating tasks from PRD using AI Service")
         generation_result = await ai_service.generate_task_with_ai(
             user_prompt=generation_prompt,
             use_research=use_research,
             use_lts_deps=use_lts_deps,
-            project_context=f"PRD parsing for {target_tasks_count} tasks"
+            project_context=f"PRD parsing for {target_tasks_count} tasks",
         )
-        
+
         # Extract tasks from AI response
         if "error" in generation_result:
             return {
                 "error": f"AI generation failed: {generation_result['error']}",
                 "generated_tasks": [],
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Parse the generated content
         ai_content = generation_result.get("content", "")
         try:
             # Try to extract JSON from AI response
             import json
             import re
-            
+
             # Look for JSON array in the response
-            json_match = re.search(r'\[.*\]', ai_content, re.DOTALL)
+            json_match = re.search(r"\[.*\]", ai_content, re.DOTALL)
             if json_match:
                 generated_tasks_raw = json.loads(json_match.group())
             else:
                 # Fallback: try to parse entire content as JSON
                 generated_tasks_raw = json.loads(ai_content)
-            
+
             # Ensure it's a list
             if not isinstance(generated_tasks_raw, list):
                 generated_tasks_raw = [generated_tasks_raw]
-                
+
         except (json.JSONDecodeError, AttributeError) as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
             return {
                 "error": f"Failed to parse AI response: {str(e)}",
-                "ai_response": ai_content[:500] + "..." if len(ai_content) > 500 else ai_content,
+                "ai_response": (
+                    ai_content[:500] + "..." if len(ai_content) > 500 else ai_content
+                ),
                 "generated_tasks": [],
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Process and format tasks
         generated_tasks = []
         for i, task_data in enumerate(generated_tasks_raw[:target_tasks_count], 1):
@@ -479,10 +490,10 @@ Rispondi SOLO con JSON valido contenente array di task.
                 "estimated_hours": task_data.get("estimated_hours", 0.0),
                 "complexity_score": task_data.get("complexity_score", 5),
                 "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now().isoformat(),
             }
             generated_tasks.append(task)
-        
+
         # Prepare tasks data structure
         tasks_data = {
             "version": "1.0",
@@ -493,11 +504,11 @@ Rispondi SOLO con JSON valido contenente array di task.
                 "use_research": use_research,
                 "use_lts_deps": use_lts_deps,
                 "ai_model_used": generation_result.get("model_used", "unknown"),
-                "generation_time": generation_result.get("generation_time", 0)
+                "generation_time": generation_result.get("generation_time", 0),
             },
-            "tasks": generated_tasks
+            "tasks": generated_tasks,
         }
-        
+
         # Save tasks to file
         try:
             save_tasks(project_root, tasks_data)
@@ -507,9 +518,9 @@ Rispondi SOLO con JSON valido contenente array di task.
             return {
                 "error": f"Failed to save tasks: {str(save_error)}",
                 "generated_tasks": generated_tasks,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         result = {
             "success": True,
             "message": f"Successfully generated {len(generated_tasks)} tasks from PRD",
@@ -520,62 +531,64 @@ Rispondi SOLO con JSON valido contenente array di task.
                 "research_used": use_research,
                 "lts_deps_used": use_lts_deps,
                 "model_used": generation_result.get("model_used", "unknown"),
-                "generation_time": generation_result.get("generation_time", 0)
+                "generation_time": generation_result.get("generation_time", 0),
             },
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
-        logger.info(f"PRD parsing completed successfully: {len(generated_tasks)} tasks generated")
+
+        logger.info(
+            f"PRD parsing completed successfully: {len(generated_tasks)} tasks generated"
+        )
         return result
-        
+
     except Exception as e:
         logger.error(f"Error parsing PRD: {str(e)}")
         return {
             "error": f"Failed to parse PRD: {str(e)}",
             "generated_tasks": [],
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def get_cache_metrics_tool(
-    project_root: str,
-    include_detailed_stats: bool = True
+    project_root: str, include_detailed_stats: bool = True
 ) -> Dict[str, Any]:
     """
     Ottieni metriche di performance cache e rate limiting dell'AI Service.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         include_detailed_stats: Includi statistiche dettagliate per tipo di cache
-        
+
     Returns:
         Dict contenente metriche complete di cache e rate limiting
     """
     try:
         logger.info(f"Getting cache metrics for project: {project_root}")
-        
+
         # Initialize AI Service to get cache manager
         from .ai_service import AIService
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Get base metrics
         metrics = ai_service.get_cache_metrics()
-        
+
         # Add detailed stats if requested
         if include_detailed_stats:
             detailed_stats = ai_service.cache_manager.get_cache_stats_by_type()
             metrics["detailed_cache_stats"] = detailed_stats
-        
+
         # Add timestamp and project info
         metrics["timestamp"] = datetime.now().isoformat()
         metrics["project_root"] = project_root
-        
+
         # Add summary insights
         cache_metrics = metrics.get("cache", {})
         hit_rate = cache_metrics.get("hit_rate", 0)
         total_saved_cost = cache_metrics.get("total_saved_cost", 0)
-        
+
         insights = []
         if hit_rate > 80:
             insights.append("Excellent cache performance - high hit rate")
@@ -585,61 +598,57 @@ def get_cache_metrics_tool(
             insights.append("Fair cache performance - consider optimizing")
         else:
             insights.append("Low cache performance - review caching strategy")
-        
+
         if total_saved_cost > 1.0:
             insights.append(f"Significant cost savings: ${total_saved_cost:.2f}")
         elif total_saved_cost > 0.1:
             insights.append(f"Moderate cost savings: ${total_saved_cost:.2f}")
-        
+
         metrics["insights"] = insights
-        
+
         logger.info(f"Cache metrics retrieved successfully - hit rate: {hit_rate:.1f}%")
-        return {
-            "success": True,
-            "metrics": metrics,
-            "project_root": project_root
-        }
-        
+        return {"success": True, "metrics": metrics, "project_root": project_root}
+
     except Exception as e:
         logger.error(f"Error getting cache metrics: {str(e)}")
         return {
             "error": f"Failed to get cache metrics: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def clear_cache_tool(
-    project_root: str,
-    cache_type: Optional[str] = None,
-    confirm: bool = False
+    project_root: str, cache_type: Optional[str] = None, confirm: bool = False
 ) -> Dict[str, Any]:
     """
     Pulisci la cache AI per ottimizzare le performance.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         cache_type: Tipo di cache da pulire (lts_research, best_practices, task_generation, general) o None per tutto
         confirm: Conferma operazione di pulizia
-        
+
     Returns:
         Dict contenente risultati dell'operazione di pulizia
     """
     try:
-        logger.info(f"Cache clear requested for project: {project_root}, type: {cache_type}")
-        
+        logger.info(
+            f"Cache clear requested for project: {project_root}, type: {cache_type}"
+        )
+
         if not confirm:
             return {
                 "error": "Cache clear requires confirmation. Set confirm=True to proceed.",
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Initialize AI Service to get cache manager
         from .ai_service import AIService
         from .cache_manager import CacheType
-        
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Map string to CacheType enum
         cache_type_enum = None
         if cache_type:
@@ -647,28 +656,28 @@ def clear_cache_tool(
                 "lts_research": CacheType.LTS_RESEARCH,
                 "best_practices": CacheType.BEST_PRACTICES,
                 "task_generation": CacheType.TASK_GENERATION,
-                "general": CacheType.GENERAL
+                "general": CacheType.GENERAL,
             }
-            
+
             if cache_type not in cache_type_map:
                 return {
                     "error": f"Invalid cache type: {cache_type}. Valid types: {list(cache_type_map.keys())}",
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-            
+
             cache_type_enum = cache_type_map[cache_type]
-        
+
         # Get metrics before clearing
         before_metrics = ai_service.get_cache_metrics()
         before_size = before_metrics.get("cache", {}).get("cache_size", 0)
-        
+
         # Clear cache
         cleared_count = ai_service.cache_manager.clear_cache(cache_type_enum)
-        
+
         # Get metrics after clearing
         after_metrics = ai_service.get_cache_metrics()
         after_size = after_metrics.get("cache", {}).get("cache_size", 0)
-        
+
         result = {
             "success": True,
             "message": f"Successfully cleared {cleared_count} cache entries",
@@ -677,81 +686,92 @@ def clear_cache_tool(
             "cache_size_before": before_size,
             "cache_size_after": after_size,
             "timestamp": datetime.now().isoformat(),
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         logger.info(f"Cache cleared successfully: {cleared_count} entries removed")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error clearing cache: {str(e)}")
         return {
             "error": f"Failed to clear cache: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def check_rate_limits_tool(
-    project_root: str,
-    provider: Optional[str] = None
+    project_root: str, provider: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Controlla lo stato dei rate limits e fornisce istruzioni per la configurazione.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         provider: Provider specifico da controllare (openai, anthropic, perplexity, etc.) o None per tutti
-        
+
     Returns:
         Dict contenente stato rate limits e istruzioni configurazione
     """
     try:
-        logger.info(f"Checking rate limits for project: {project_root}, provider: {provider}")
-        
+        logger.info(
+            f"Checking rate limits for project: {project_root}, provider: {provider}"
+        )
+
         # Initialize AI Service to get cache manager
         from .ai_service import AIService
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Get current metrics
         metrics = ai_service.get_cache_metrics()
         rate_limits = metrics.get("rate_limits", {})
-        
+
         if not rate_limits:
             return {
                 "message": "No rate limit data available yet. Make some AI calls first.",
                 "rate_limits": {},
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Filter by provider if specified
         if provider:
-            rate_limits = {k: v for k, v in rate_limits.items() if v["provider"] == provider}
-            
+            rate_limits = {
+                k: v for k, v in rate_limits.items() if v["provider"] == provider
+            }
+
             if not rate_limits:
                 return {
                     "error": f"No rate limit data found for provider: {provider}",
-                    "available_providers": list(set(v["provider"] for v in metrics.get("rate_limits", {}).values())),
-                    "project_root": project_root
+                    "available_providers": list(
+                        set(
+                            v["provider"]
+                            for v in metrics.get("rate_limits", {}).values()
+                        )
+                    ),
+                    "project_root": project_root,
                 }
-        
+
         # Check each rate limit and get messages
         status_messages = []
         configuration_tips = []
         warnings = []
-        
+
         for rate_key, rate_info in rate_limits.items():
             provider_name = rate_info["provider"]
             model_name = rate_info["model"]
-            
+
             # Get user-friendly message
-            rate_msg = ai_service.cache_manager.get_rate_limit_message(provider_name, model_name)
+            rate_msg = ai_service.cache_manager.get_rate_limit_message(
+                provider_name, model_name
+            )
             if rate_msg:
                 if "Rate limit reached" in rate_msg:
                     warnings.append(rate_msg)
                 else:
                     status_messages.append(rate_msg)
-            
+
             # Add configuration tips
             usage_pct = rate_info.get("usage_percentage", 0)
             if usage_pct > 50:  # Show tips for providers with >50% usage
@@ -759,19 +779,19 @@ def check_rate_limits_tool(
                 minute_var = f"PYTASKAI_{provider_name.upper()}_MINUTE_LIMIT"
                 current_daily = rate_info.get("daily_limit", 1000)
                 current_minute = rate_info.get("minute_limit", 60)
-                
+
                 config_tip = {
                     "provider": provider_name,
                     "model": model_name,
                     "current_usage": f"{rate_info.get('calls_count', 0)}/{current_daily} calls ({usage_pct:.1f}%)",
                     "recommended_config": [
                         f"export {daily_var}={current_daily * 2}  # Double daily limit",
-                        f"export {minute_var}={current_minute * 2}  # Double minute limit"
+                        f"export {minute_var}={current_minute * 2}  # Double minute limit",
                     ],
-                    "alternative_models": self._get_alternative_models(provider_name)
+                    "alternative_models": self._get_alternative_models(provider_name),
                 }
                 configuration_tips.append(config_tip)
-        
+
         # Prepare result
         result = {
             "success": True,
@@ -780,42 +800,60 @@ def check_rate_limits_tool(
             "status_messages": status_messages,
             "warnings": warnings,
             "configuration_tips": configuration_tips,
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add overall recommendations
         recommendations = []
         if warnings:
-            recommendations.append("🚨 URGENT: Some providers have reached rate limits. Configure higher limits immediately.")
+            recommendations.append(
+                "🚨 URGENT: Some providers have reached rate limits. Configure higher limits immediately."
+            )
         elif status_messages:
-            recommendations.append("⚠️  Some providers are approaching limits. Consider increasing limits proactively.")
+            recommendations.append(
+                "⚠️  Some providers are approaching limits. Consider increasing limits proactively."
+            )
         else:
             recommendations.append("✅ All rate limits are healthy.")
-        
+
         # Add general configuration guide
-        recommendations.append("💡 To modify rate limits, set environment variables and restart the application.")
-        recommendations.append("📖 See MCP_CONFIGURATION.md for complete configuration guide.")
-        
+        recommendations.append(
+            "💡 To modify rate limits, set environment variables and restart the application."
+        )
+        recommendations.append(
+            "📖 See MCP_CONFIGURATION.md for complete configuration guide."
+        )
+
         result["recommendations"] = recommendations
-        
-        logger.info(f"Rate limits checked: {len(rate_limits)} providers, {len(warnings)} warnings")
+
+        logger.info(
+            f"Rate limits checked: {len(rate_limits)} providers, {len(warnings)} warnings"
+        )
         return result
-        
+
     except Exception as e:
         logger.error(f"Error checking rate limits: {str(e)}")
         return {
             "error": f"Failed to check rate limits: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
+
 
 def _get_alternative_models(provider: str) -> List[str]:
     """Get alternative models for a provider to suggest for rate limiting."""
     alternatives = {
         "openai": ["gpt-4o-mini", "gpt-3.5-turbo", "gpt-4o"],
-        "anthropic": ["claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229"],
-        "perplexity": ["llama-3.1-sonar-small-128k-online", "llama-3.1-sonar-large-128k-online"],
+        "anthropic": [
+            "claude-3-haiku-20240307",
+            "claude-3-sonnet-20240229",
+            "claude-3-opus-20240229",
+        ],
+        "perplexity": [
+            "llama-3.1-sonar-small-128k-online",
+            "llama-3.1-sonar-large-128k-online",
+        ],
         "google": ["gemini-1.5-flash", "gemini-1.5-pro"],
-        "xai": ["grok-beta"]
+        "xai": ["grok-beta"],
     }
     return alternatives.get(provider, [])
 
@@ -826,56 +864,58 @@ def get_usage_stats_tool(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     provider: Optional[str] = None,
-    operation_type: Optional[str] = None
+    operation_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Ottieni statistiche dettagliate di utilizzo AI con breakdown per provider e operazioni.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         start_date: Data inizio filtro (ISO format: YYYY-MM-DD)
         end_date: Data fine filtro (ISO format: YYYY-MM-DD)
         provider: Provider specifico da analizzare (openai, anthropic, etc.)
         operation_type: Tipo operazione (lts_research, best_practices, task_generation, etc.)
-        
+
     Returns:
         Dict contenente statistiche complete di utilizzo
     """
     try:
         logger.info(f"Getting usage stats for project: {project_root}")
-        
+
         # Initialize AI Service to get usage tracker
         from .ai_service import AIService
         from dataclasses import asdict
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Parse dates if provided
         kwargs = {}
         if start_date:
-            kwargs['start_date'] = datetime.fromisoformat(start_date)
+            kwargs["start_date"] = datetime.fromisoformat(start_date)
         if end_date:
-            kwargs['end_date'] = datetime.fromisoformat(end_date)
+            kwargs["end_date"] = datetime.fromisoformat(end_date)
         if provider:
-            kwargs['provider'] = provider
+            kwargs["provider"] = provider
         if operation_type:
             from .usage_tracker import OperationType
+
             try:
-                kwargs['operation_type'] = OperationType(operation_type)
+                kwargs["operation_type"] = OperationType(operation_type)
             except ValueError:
                 return {
                     "error": f"Invalid operation type: {operation_type}. Valid types: {[ot.value for ot in OperationType]}",
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-        
+
         # Get statistics
         stats = ai_service.get_usage_stats(**kwargs)
-        
+
         # Add efficiency metrics
         efficiency_metrics = ai_service.usage_tracker.get_efficiency_metrics()
-        
+
         # Get budget status
         budget_status = ai_service.get_budget_status()
-        
+
         result = {
             "success": True,
             "timestamp": datetime.now().isoformat(),
@@ -883,114 +923,129 @@ def get_usage_stats_tool(
                 "start_date": start_date,
                 "end_date": end_date,
                 "provider": provider,
-                "operation_type": operation_type
+                "operation_type": operation_type,
             },
             "usage_stats": asdict(stats),
             "efficiency_metrics": efficiency_metrics,
             "budget_status": budget_status,
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add insights
         insights = []
-        
+
         if stats.total_cost > 0:
             insights.append(f"💰 Total cost: ${stats.total_cost:.4f}")
             if stats.estimated_monthly_cost > 0:
-                insights.append(f"📊 Estimated monthly: ${stats.estimated_monthly_cost:.2f}")
-        
+                insights.append(
+                    f"📊 Estimated monthly: ${stats.estimated_monthly_cost:.2f}"
+                )
+
         if stats.cache_hit_rate > 0:
             insights.append(f"🎯 Cache hit rate: {stats.cache_hit_rate:.1f}%")
-        
+
         if stats.most_used_model:
             insights.append(f"🔧 Most used model: {stats.most_used_model}")
-        
+
         if stats.most_expensive_operation:
-            insights.append(f"💸 Most expensive operation: {stats.most_expensive_operation}")
-        
+            insights.append(
+                f"💸 Most expensive operation: {stats.most_expensive_operation}"
+            )
+
         # Budget insights
-        if budget_status['daily']['status'] != 'ok':
+        if budget_status["daily"]["status"] != "ok":
             insights.append(f"⚠️ Daily budget: {budget_status['daily']['status']}")
-        
-        if budget_status['monthly']['status'] != 'ok':
+
+        if budget_status["monthly"]["status"] != "ok":
             insights.append(f"⚠️ Monthly budget: {budget_status['monthly']['status']}")
-        
+
         result["insights"] = insights
-        
-        logger.info(f"Usage stats retrieved: {stats.total_calls} calls, ${stats.total_cost:.4f}")
+
+        logger.info(
+            f"Usage stats retrieved: {stats.total_calls} calls, ${stats.total_cost:.4f}"
+        )
         return result
-        
+
     except Exception as e:
         logger.error(f"Error getting usage stats: {str(e)}")
         return {
             "error": f"Failed to get usage stats: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
-def check_budget_status_tool(
-    project_root: str
-) -> Dict[str, Any]:
+def check_budget_status_tool(project_root: str) -> Dict[str, Any]:
     """
     Controlla stato budget AI e fornisce raccomandazioni per ottimizzazione costi.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
-        
+
     Returns:
         Dict contenente stato budget e raccomandazioni
     """
     try:
         logger.info(f"Checking budget status for project: {project_root}")
-        
+
         # Initialize AI Service to get usage tracker
         from .ai_service import AIService
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Get budget status
         budget_status = ai_service.get_budget_status()
-        
+
         # Get efficiency metrics for additional insights
         efficiency_metrics = ai_service.usage_tracker.get_efficiency_metrics()
-        
+
         # Get top models by cost
         top_models = ai_service.usage_tracker.get_top_models_by_cost(5)
-        
+
         result = {
             "success": True,
             "timestamp": datetime.now().isoformat(),
             "budget_status": budget_status,
             "efficiency_metrics": efficiency_metrics,
             "top_models_by_cost": top_models,
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add quick summary
-        daily = budget_status['daily']
-        monthly = budget_status['monthly']
-        
+        daily = budget_status["daily"]
+        monthly = budget_status["monthly"]
+
         summary = []
-        summary.append(f"💰 Daily: ${daily['spent']:.4f} / ${daily['budget']:.2f} ({daily['usage_percentage']:.1f}%)")
-        summary.append(f"📅 Monthly: ${monthly['spent']:.4f} / ${monthly['budget']:.2f} ({monthly['usage_percentage']:.1f}%)")
-        
-        if efficiency_metrics.get('cache_hit_rate', 0) > 0:
-            summary.append(f"🎯 Cache hit rate: {efficiency_metrics['cache_hit_rate']:.1f}%")
-        
+        summary.append(
+            f"💰 Daily: ${daily['spent']:.4f} / ${daily['budget']:.2f} ({daily['usage_percentage']:.1f}%)"
+        )
+        summary.append(
+            f"📅 Monthly: ${monthly['spent']:.4f} / ${monthly['budget']:.2f} ({monthly['usage_percentage']:.1f}%)"
+        )
+
+        if efficiency_metrics.get("cache_hit_rate", 0) > 0:
+            summary.append(
+                f"🎯 Cache hit rate: {efficiency_metrics['cache_hit_rate']:.1f}%"
+            )
+
         if top_models:
             most_expensive = top_models[0]
-            summary.append(f"💸 Most expensive: {most_expensive[0]} (${most_expensive[1]:.4f})")
-        
+            summary.append(
+                f"💸 Most expensive: {most_expensive[0]} (${most_expensive[1]:.4f})"
+            )
+
         result["summary"] = summary
-        
-        logger.info(f"Budget status checked: daily {daily['status']}, monthly {monthly['status']}")
+
+        logger.info(
+            f"Budget status checked: daily {daily['status']}, monthly {monthly['status']}"
+        )
         return result
-        
+
     except Exception as e:
         logger.error(f"Error checking budget status: {str(e)}")
         return {
             "error": f"Failed to check budget status: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -1000,112 +1055,123 @@ def set_task_status_tool(
     task_id: Union[int, str],
     new_status: str,
     subtask_id: Optional[Union[int, str]] = None,
-    update_timestamp: bool = True
+    update_timestamp: bool = True,
 ) -> Dict[str, Any]:
     """
     Aggiorna lo stato di un task o subtask specifico.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task da aggiornare
         new_status: Nuovo stato (pending, in-progress, done, cancelled, review, deferred)
         subtask_id: ID del subtask da aggiornare (opzionale, per aggiornare un subtask)
         update_timestamp: Se aggiornare automaticamente il timestamp updated_at
-        
+
     Returns:
         Dict contenente risultato dell'operazione
     """
     try:
-        logger.info(f"Setting task status for project: {project_root}, task_id: {task_id}, status: {new_status}")
-        
+        logger.info(
+            f"Setting task status for project: {project_root}, task_id: {task_id}, status: {new_status}"
+        )
+
         # Validate status
-        valid_statuses = ["pending", "in-progress", "done", "cancelled", "review", "deferred"]
+        valid_statuses = [
+            "pending",
+            "in-progress",
+            "done",
+            "cancelled",
+            "review",
+            "deferred",
+        ]
         if new_status not in valid_statuses:
             return {
                 "error": f"Invalid status: {new_status}. Valid statuses: {valid_statuses}",
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
             return {
                 "error": "No tasks file found",
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
         task_id = int(task_id)
-        
+
         # Find the target task
         target_task = None
         task_index = None
-        
+
         for i, task in enumerate(tasks):
             if task.get("id") == task_id:
                 target_task = task
                 task_index = i
                 break
-        
+
         if not target_task:
             return {
                 "error": f"Task with ID {task_id} not found",
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Prepare update information
         old_status = None
         update_target = "task"
-        
+
         # Handle subtask update
         if subtask_id is not None:
             subtask_id = int(subtask_id)
             subtasks = target_task.get("subtasks", [])
-            
+
             subtask_found = False
             for j, subtask in enumerate(subtasks):
                 if subtask.get("id") == subtask_id:
                     old_status = subtask.get("status", "unknown")
                     subtask["status"] = new_status
-                    
+
                     if update_timestamp:
                         subtask["updated_at"] = datetime.now().isoformat()
-                    
+
                     subtask_found = True
                     update_target = f"subtask {subtask_id}"
                     break
-            
+
             if not subtask_found:
                 return {
                     "error": f"Subtask with ID {subtask_id} not found in task {task_id}",
                     "task_id": task_id,
                     "subtask_id": subtask_id,
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
         else:
             # Update main task
             old_status = target_task.get("status", "unknown")
             target_task["status"] = new_status
-            
+
             if update_timestamp:
                 target_task["updated_at"] = datetime.now().isoformat()
-        
+
         # Save updated tasks
         try:
             save_tasks(project_root, data)
-            logger.info(f"Successfully updated {update_target} status from '{old_status}' to '{new_status}'")
+            logger.info(
+                f"Successfully updated {update_target} status from '{old_status}' to '{new_status}'"
+            )
         except Exception as save_error:
             logger.error(f"Failed to save tasks: {save_error}")
             return {
                 "error": f"Failed to save task updates: {str(save_error)}",
                 "task_id": task_id,
                 "subtask_id": subtask_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Prepare success response
         result = {
             "success": True,
@@ -1114,20 +1180,20 @@ def set_task_status_tool(
             "old_status": old_status,
             "new_status": new_status,
             "updated_at": datetime.now().isoformat(),
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         if subtask_id is not None:
             result["subtask_id"] = subtask_id
-        
+
         # Add task context to response
         task_context = {
             "title": target_task.get("title", "Unknown"),
             "description": target_task.get("description", ""),
-            "priority": target_task.get("priority", "medium")
+            "priority": target_task.get("priority", "medium"),
         }
         result["task_context"] = task_context
-        
+
         # Add status progression insights
         status_progression = []
         if old_status == "pending" and new_status == "in-progress":
@@ -1140,26 +1206,26 @@ def set_task_status_tool(
             status_progression.append("❌ Task cancelled")
         elif new_status == "deferred":
             status_progression.append("⏰ Task deferred for later")
-        
+
         if status_progression:
             result["status_progression"] = status_progression
-        
+
         logger.info(f"Task status update completed: {task_id} -> {new_status}")
         return result
-        
+
     except ValueError as ve:
         logger.error(f"Value error in set_task_status: {str(ve)}")
         return {
             "error": f"Invalid input: {str(ve)}",
             "task_id": task_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
     except Exception as e:
         logger.error(f"Error setting task status: {str(e)}")
         return {
             "error": f"Failed to set task status: {str(e)}",
             "task_id": task_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -1171,11 +1237,21 @@ async def add_task_tool(
     use_lts_deps: bool = True,
     priority: str = "medium",
     target_task_id: Optional[int] = None,
-    dependencies: Optional[str] = None
+    dependencies: Optional[str] = None,
+    task_type: str = "task",
+    severity: Optional[str] = None,
+    steps_to_reproduce: Optional[str] = None,
+    expected_result: Optional[str] = None,
+    actual_result: Optional[str] = None,
+    environment: Optional[str] = None,
+    target_test_coverage: Optional[float] = None,
+    related_tests: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Aggiunge un nuovo task principale utilizzando AI (LiteLLM) con supporto ricerca e best practices.
     
+    Supporta sia task generici che bug tracking con campi specifici per debugging.
+
     Args:
         project_root: Path assoluto alla directory del progetto
         prompt: Descrizione del task da creare
@@ -1184,7 +1260,15 @@ async def add_task_tool(
         priority: Priorità del task (high, medium, low)
         target_task_id: ID specifico da assegnare al task (opzionale)
         dependencies: Lista dipendenze come stringa comma-separated (es: "1,2,3")
-        
+        task_type: Tipo di task (task, bug, feature, enhancement, research, documentation)
+        severity: Severità del bug (critical, high, medium, low) - solo per bugs
+        steps_to_reproduce: Passi per riprodurre il bug - solo per bugs
+        expected_result: Comportamento atteso - solo per bugs
+        actual_result: Comportamento osservato - solo per bugs
+        environment: Ambiente dove si verifica il bug - solo per bugs
+        target_test_coverage: Copertura test target (0-100%) - opzionale
+        related_tests: Lista test correlati come stringa comma-separated
+
     Returns:
         Dict contenente il task creato e metadati dell'operazione
     """
@@ -1192,27 +1276,55 @@ async def add_task_tool(
         # Validate project_root parameter
         if not project_root or project_root == "":
             project_root = "."
-        
+
         # Ensure project_root is absolute and valid
         import os
+
         if not os.path.isabs(project_root):
             project_root = os.path.abspath(project_root)
-        
+
         logger.info(f"Creating new task for project: {project_root}")
         logger.info(f"Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
-        logger.info(f"Research: {use_research}, LTS: {use_lts_deps}, Priority: {priority}")
-        
+        logger.info(
+            f"Research: {use_research}, LTS: {use_lts_deps}, Priority: {priority}"
+        )
+
         # Validazione parametri
-        valid_priorities = ["high", "medium", "low"]
+        valid_priorities = ["highest", "high", "medium", "low", "lowest"]
         if priority not in valid_priorities:
             return {
                 "error": f"Invalid priority: {priority}. Valid priorities: {valid_priorities}",
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
+        valid_task_types = ["task", "bug", "feature", "enhancement", "research", "documentation"]
+        if task_type not in valid_task_types:
+            return {
+                "error": f"Invalid task_type: {task_type}. Valid types: {valid_task_types}",
+                "project_root": project_root,
+            }
+
+        # Validate bug-specific fields
+        if task_type == "bug":
+            if severity:
+                valid_severities = ["critical", "high", "medium", "low"]
+                if severity not in valid_severities:
+                    return {
+                        "error": f"Invalid severity: {severity}. Valid severities: {valid_severities}",
+                        "project_root": project_root,
+                    }
+
+        # Validate test coverage
+        if target_test_coverage is not None:
+            if not (0 <= target_test_coverage <= 100):
+                return {
+                    "error": f"Invalid target_test_coverage: {target_test_coverage}. Must be between 0 and 100",
+                    "project_root": project_root,
+                }
+
         # Load existing tasks to determine next ID
         existing_task_objects = load_tasks(project_root)
-        
+
         # Convert Task objects to dict format for processing
         if existing_task_objects:
             existing_tasks = [task.dict() for task in existing_task_objects]
@@ -1222,8 +1334,8 @@ async def add_task_tool(
                 "metadata": {
                     "generator": "PyTaskAI",
                     "last_updated": datetime.now().isoformat(),
-                    "total_tasks": len(existing_tasks)
-                }
+                    "total_tasks": len(existing_tasks),
+                },
             }
         else:
             # Initialize empty tasks structure
@@ -1233,133 +1345,138 @@ async def add_task_tool(
                 "tasks": [],
                 "metadata": {
                     "generator": "PyTaskAI",
-                    "created_at": datetime.now().isoformat()
-                }
+                    "created_at": datetime.now().isoformat(),
+                },
             }
-        
+
         # Determine next task ID
         if target_task_id:
             # Check if target ID already exists
             if any(t.get("id") == target_task_id for t in existing_tasks):
                 return {
                     "error": f"Task ID {target_task_id} already exists",
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
             next_id = target_task_id
         else:
             # Auto-assign next available ID
             max_id = max([t.get("id", 0) for t in existing_tasks], default=0)
             next_id = max_id + 1
-        
+
         # Parse dependencies
         parsed_dependencies = []
         if dependencies:
             try:
-                dep_ids = [int(dep.strip()) for dep in dependencies.split(",") if dep.strip()]
-                
+                dep_ids = [
+                    int(dep.strip()) for dep in dependencies.split(",") if dep.strip()
+                ]
+
                 # Validate that all dependencies exist
                 existing_ids = {t.get("id") for t in existing_tasks}
-                invalid_deps = [dep_id for dep_id in dep_ids if dep_id not in existing_ids]
-                
+                invalid_deps = [
+                    dep_id for dep_id in dep_ids if dep_id not in existing_ids
+                ]
+
                 if invalid_deps:
                     return {
                         "error": f"Invalid dependency IDs: {invalid_deps}. These tasks do not exist.",
                         "existing_task_ids": list(existing_ids),
-                        "project_root": project_root
+                        "project_root": project_root,
                     }
-                
+
                 parsed_dependencies = dep_ids
-                
+
             except ValueError as e:
                 return {
                     "error": f"Invalid dependencies format: {dependencies}. Use comma-separated numbers (e.g., '1,2,3')",
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-        
+
         # Extract information for research if enabled
         mentioned_technologies = []
         topic_for_best_practices = ""
-        
+
         if use_research:
             # Simple extraction logic - in a real implementation this could be more sophisticated
             # Extract technology mentions (common patterns)
             import re
-            
+
             tech_patterns = [
-                r'\b(React|Vue|Angular|Svelte|Next\.js|Nuxt|Gatsby)\b',
-                r'\b(Node\.js|Express|Fastify|Koa|Deno|Bun)\b', 
-                r'\b(Python|FastAPI|Django|Flask|Tornado)\b',
-                r'\b(TypeScript|JavaScript|Go|Rust|Java|C\#)\b',
-                r'\b(Docker|Kubernetes|AWS|GCP|Azure)\b',
-                r'\b(PostgreSQL|MySQL|MongoDB|Redis|SQLite)\b',
-                r'\b(Git|GitHub|GitLab|CI/CD|Jenkins)\b'
+                r"\b(React|Vue|Angular|Svelte|Next\.js|Nuxt|Gatsby)\b",
+                r"\b(Node\.js|Express|Fastify|Koa|Deno|Bun)\b",
+                r"\b(Python|FastAPI|Django|Flask|Tornado)\b",
+                r"\b(TypeScript|JavaScript|Go|Rust|Java|C\#)\b",
+                r"\b(Docker|Kubernetes|AWS|GCP|Azure)\b",
+                r"\b(PostgreSQL|MySQL|MongoDB|Redis|SQLite)\b",
+                r"\b(Git|GitHub|GitLab|CI/CD|Jenkins)\b",
             ]
-            
+
             for pattern in tech_patterns:
                 matches = re.findall(pattern, prompt, re.IGNORECASE)
                 mentioned_technologies.extend([match.lower() for match in matches])
-            
+
             # Remove duplicates
             mentioned_technologies = list(set(mentioned_technologies))
-            
+
             # Extract topic for best practices (first sentence or key phrase)
-            sentences = prompt.split('.')
+            sentences = prompt.split(".")
             if sentences:
                 topic_for_best_practices = sentences[0].strip()
-            
+
             logger.info(f"Extracted technologies: {mentioned_technologies}")
             logger.info(f"Best practices topic: {topic_for_best_practices}")
-        
+
         # Initialize AI Service
         from .ai_service import AIService
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Generate task using AI
         logger.info("Generating task with AI Service")
-        
+
         generation_result = await ai_service.generate_task_with_ai(
             user_prompt=prompt,
             use_research=use_research,
             use_lts_deps=use_lts_deps,
             mentioned_technologies=mentioned_technologies,
             topic_for_best_practices=topic_for_best_practices,
-            project_context=f"Adding task to project with {len(existing_tasks)} existing tasks"
+            project_context=f"Adding task to project with {len(existing_tasks)} existing tasks",
         )
-        
+
         # Check for AI generation errors
         if "error" in generation_result:
             return {
                 "error": f"AI task generation failed: {generation_result['error']}",
                 "generation_details": generation_result,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Extract generated content
         ai_content = generation_result.get("content", "")
         if not ai_content:
             return {
                 "error": "AI generated empty content",
                 "generation_result": generation_result,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Parse AI generated task data
         try:
             # Try to extract JSON from AI response
             import json
             import re
-            
+
             # Look for JSON object in the response
-            json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
+            json_match = re.search(r"\{.*\}", ai_content, re.DOTALL)
             if json_match:
                 task_data = json.loads(json_match.group())
             else:
                 # Fallback: try to parse entire content as JSON
                 task_data = json.loads(ai_content)
-                
+
         except (json.JSONDecodeError, AttributeError) as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
-            
+
             # Fallback: create task from prompt
             task_data = {
                 "title": prompt[:50] + "..." if len(prompt) > 50 else prompt,
@@ -1367,13 +1484,15 @@ async def add_task_tool(
                 "details": "Task created from user prompt. AI parsing failed.",
                 "test_strategy": "Manual testing required.",
                 "estimated_hours": 2.0,
-                "complexity_score": 5
+                "complexity_score": 5,
             }
-        
+
         # Create new task with proper structure
         new_task = {
             "id": next_id,
-            "title": task_data.get("title", prompt[:50] + "..." if len(prompt) > 50 else prompt),
+            "title": task_data.get(
+                "title", prompt[:50] + "..." if len(prompt) > 50 else prompt
+            ),
             "description": task_data.get("description", prompt),
             "details": task_data.get("details", ""),
             "status": "pending",
@@ -1384,9 +1503,9 @@ async def add_task_tool(
             "complexity_score": task_data.get("complexity_score", 5),
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
-            "subtasks": []
+            "subtasks": [],
         }
-        
+
         # Add AI generation metadata
         if "model_used" in generation_result:
             new_task["ai_metadata"] = {
@@ -1395,14 +1514,14 @@ async def add_task_tool(
                 "lts_deps_used": use_lts_deps,
                 "mentioned_technologies": mentioned_technologies,
                 "generation_time": generation_result.get("generation_time", 0),
-                "generation_cost": generation_result.get("cost", 0)
+                "generation_cost": generation_result.get("cost", 0),
             }
-        
+
         # Add task to data structure
         data["tasks"].append(new_task)
         data["metadata"]["last_updated"] = datetime.now().isoformat()
         data["metadata"]["total_tasks"] = len(data["tasks"])
-        
+
         # Save updated tasks
         try:
             # Convert dict tasks to Task objects for save_tasks function
@@ -1413,9 +1532,10 @@ async def add_task_tool(
                     task_dict["subtasks"] = []
                 # Create Task object - this will handle validation
                 from shared.models import Task
+
                 task_obj = Task(**task_dict)
                 task_objects.append(task_obj)
-            
+
             save_tasks(task_objects, project_root)
             logger.info(f"Successfully created task {next_id}: {new_task['title']}")
         except Exception as save_error:
@@ -1423,9 +1543,9 @@ async def add_task_tool(
             return {
                 "error": f"Failed to save new task: {str(save_error)}",
                 "generated_task": new_task,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Prepare success response
         result = {
             "success": True,
@@ -1437,31 +1557,31 @@ async def add_task_tool(
                 "lts_deps_used": use_lts_deps,
                 "model_used": generation_result.get("model_used", "unknown"),
                 "generation_time": generation_result.get("generation_time", 0),
-                "cost": generation_result.get("cost", 0)
+                "cost": generation_result.get("cost", 0),
             },
             "project_stats": {
                 "total_tasks": len(data["tasks"]),
-                "new_task_position": next_id
+                "new_task_position": next_id,
             },
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add research insights if used
         if use_research and mentioned_technologies:
             result["research_insights"] = {
                 "technologies_found": mentioned_technologies,
-                "best_practices_topic": topic_for_best_practices
+                "best_practices_topic": topic_for_best_practices,
             }
-        
+
         logger.info(f"Task creation completed successfully: ID {next_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error creating task: {str(e)}")
         return {
             "error": f"Failed to create task: {str(e)}",
             "prompt": prompt,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -1472,11 +1592,11 @@ async def expand_task_tool(
     use_research: bool = False,
     use_lts_deps: bool = True,
     target_subtasks_count: int = 5,
-    additional_context: Optional[str] = None
+    additional_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Espande un task esistente in subtask utilizzando AI (LiteLLM) con supporto ricerca e best practices.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task da espandere in subtask
@@ -1484,48 +1604,52 @@ async def expand_task_tool(
         use_lts_deps: Se preferire versioni LTS delle dipendenze
         target_subtasks_count: Numero target di subtask da generare (default: 5)
         additional_context: Contesto aggiuntivo per la generazione subtask
-        
+
     Returns:
         Dict contenente i subtask generati e metadati dell'operazione
     """
     try:
         logger.info(f"Expanding task {task_id} for project: {project_root}")
-        logger.info(f"Research: {use_research}, LTS: {use_lts_deps}, Target count: {target_subtasks_count}")
-        
+        logger.info(
+            f"Research: {use_research}, LTS: {use_lts_deps}, Target count: {target_subtasks_count}"
+        )
+
         # Load existing tasks
         data = load_tasks(project_root)
         if not data:
             return {
                 "error": "No tasks file found",
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
         task_id = int(task_id)
-        
+
         # Find the target task
         target_task = None
         task_index = None
-        
+
         for i, task in enumerate(tasks):
             if task.get("id") == task_id:
                 target_task = task
                 task_index = i
                 break
-        
+
         if not target_task:
             return {
                 "error": f"Task with ID {task_id} not found",
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Check if task already has subtasks
         existing_subtasks = target_task.get("subtasks", [])
         if existing_subtasks:
-            logger.warning(f"Task {task_id} already has {len(existing_subtasks)} subtasks")
-        
+            logger.warning(
+                f"Task {task_id} already has {len(existing_subtasks)} subtasks"
+            )
+
         # Prepare task content for AI generation
         task_content = {
             "title": target_task.get("title", ""),
@@ -1534,53 +1658,54 @@ async def expand_task_tool(
             "test_strategy": target_task.get("test_strategy", ""),
             "priority": target_task.get("priority", "medium"),
             "complexity_score": target_task.get("complexity_score", 5),
-            "estimated_hours": target_task.get("estimated_hours", 0)
+            "estimated_hours": target_task.get("estimated_hours", 0),
         }
-        
+
         # Extract information for research if enabled
         mentioned_technologies = []
         topic_for_best_practices = ""
-        
+
         if use_research:
             # Extract technology mentions from task content
             import re
-            
+
             # Combine all task text for analysis
             full_text = f"{task_content['title']} {task_content['description']} {task_content['details']}"
             if additional_context:
                 full_text += f" {additional_context}"
-            
+
             tech_patterns = [
-                r'\b(React|Vue|Angular|Svelte|Next\.js|Nuxt|Gatsby)\b',
-                r'\b(Node\.js|Express|Fastify|Koa|Deno|Bun)\b', 
-                r'\b(Python|FastAPI|Django|Flask|Tornado)\b',
-                r'\b(TypeScript|JavaScript|Go|Rust|Java|C\#)\b',
-                r'\b(Docker|Kubernetes|AWS|GCP|Azure)\b',
-                r'\b(PostgreSQL|MySQL|MongoDB|Redis|SQLite)\b',
-                r'\b(Git|GitHub|GitLab|CI/CD|Jenkins)\b'
+                r"\b(React|Vue|Angular|Svelte|Next\.js|Nuxt|Gatsby)\b",
+                r"\b(Node\.js|Express|Fastify|Koa|Deno|Bun)\b",
+                r"\b(Python|FastAPI|Django|Flask|Tornado)\b",
+                r"\b(TypeScript|JavaScript|Go|Rust|Java|C\#)\b",
+                r"\b(Docker|Kubernetes|AWS|GCP|Azure)\b",
+                r"\b(PostgreSQL|MySQL|MongoDB|Redis|SQLite)\b",
+                r"\b(Git|GitHub|GitLab|CI/CD|Jenkins)\b",
             ]
-            
+
             for pattern in tech_patterns:
                 matches = re.findall(pattern, full_text, re.IGNORECASE)
                 mentioned_technologies.extend([match.lower() for match in matches])
-            
+
             # Remove duplicates
             mentioned_technologies = list(set(mentioned_technologies))
-            
+
             # Extract topic for best practices
-            topic_for_best_practices = task_content['title']
-            
+            topic_for_best_practices = task_content["title"]
+
             logger.info(f"Extracted technologies: {mentioned_technologies}")
             logger.info(f"Best practices topic: {topic_for_best_practices}")
-        
+
         # Initialize AI Service
         from .ai_service import AIService
+
         ai_service = AIService(project_root=project_root)
-        
+
         # Generate subtasks using AI
         logger.info("Generating subtasks with AI Service")
         # Check if method exists, if not create a wrapper
-        if hasattr(ai_service, 'generate_subtasks_with_ai'):
+        if hasattr(ai_service, "generate_subtasks_with_ai"):
             generation_result = await ai_service.generate_subtasks_with_ai(
                 task_content=task_content,
                 target_subtasks_count=target_subtasks_count,
@@ -1588,7 +1713,7 @@ async def expand_task_tool(
                 use_lts_deps=use_lts_deps,
                 mentioned_technologies=mentioned_technologies,
                 topic_for_best_practices=topic_for_best_practices,
-                additional_context=additional_context
+                additional_context=additional_context,
             )
         else:
             # Fallback: use generate_task_with_ai with modified prompt
@@ -1624,25 +1749,25 @@ Genera un array JSON di subtask, ognuno con:
 
 Rispondi SOLO con JSON valido contenente array di subtask.
             """
-            
+
             generation_result = await ai_service.generate_task_with_ai(
                 user_prompt=subtask_prompt,
                 use_research=use_research,
                 use_lts_deps=use_lts_deps,
                 mentioned_technologies=mentioned_technologies,
                 topic_for_best_practices=topic_for_best_practices,
-                project_context=f"Expanding task {task_id} into {target_subtasks_count} subtasks"
+                project_context=f"Expanding task {task_id} into {target_subtasks_count} subtasks",
             )
-        
+
         # Check for AI generation errors
         if "error" in generation_result:
             return {
                 "error": f"AI subtask generation failed: {generation_result['error']}",
                 "generation_details": generation_result,
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Extract generated content
         ai_content = generation_result.get("content", "")
         if not ai_content:
@@ -1650,36 +1775,36 @@ Rispondi SOLO con JSON valido contenente array di subtask.
                 "error": "AI generated empty content for subtasks",
                 "generation_result": generation_result,
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Parse AI generated subtasks data
         try:
             # Try to extract JSON from AI response
             import json
             import re
-            
+
             # Look for JSON array in the response
-            json_match = re.search(r'\[.*\]', ai_content, re.DOTALL)
+            json_match = re.search(r"\[.*\]", ai_content, re.DOTALL)
             if json_match:
                 subtasks_data = json.loads(json_match.group())
             else:
                 # Try to find JSON object and wrap in array
-                json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
+                json_match = re.search(r"\{.*\}", ai_content, re.DOTALL)
                 if json_match:
                     single_subtask = json.loads(json_match.group())
                     subtasks_data = [single_subtask]
                 else:
                     # Fallback: try to parse entire content as JSON
                     subtasks_data = json.loads(ai_content)
-            
+
             # Ensure it's a list
             if not isinstance(subtasks_data, list):
                 subtasks_data = [subtasks_data]
-                
+
         except (json.JSONDecodeError, AttributeError) as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
-            
+
             # Fallback: create basic subtasks from task breakdown
             subtasks_data = [
                 {
@@ -1688,16 +1813,16 @@ Rispondi SOLO con JSON valido contenente array di subtask.
                     "details": "Dettagli da definire. AI parsing fallito.",
                     "test_strategy": "Test da definire manualmente.",
                     "estimated_hours": 1.0,
-                    "complexity_score": 3
+                    "complexity_score": 3,
                 }
                 for i in range(min(target_subtasks_count, 3))
             ]
-        
+
         # Process and format subtasks
         generated_subtasks = []
         for i, subtask_data in enumerate(subtasks_data[:target_subtasks_count]):
             subtask_id = len(existing_subtasks) + i + 1
-            
+
             subtask = {
                 "id": subtask_id,
                 "title": subtask_data.get("title", f"Subtask {subtask_id}"),
@@ -1709,21 +1834,21 @@ Rispondi SOLO con JSON valido contenente array di subtask.
                 "complexity_score": subtask_data.get("complexity_score", 3),
                 "dependencies": subtask_data.get("dependencies", []),
                 "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now().isoformat(),
             }
             generated_subtasks.append(subtask)
-        
+
         # Add subtasks to parent task
         if "subtasks" not in target_task:
             target_task["subtasks"] = []
-        
+
         target_task["subtasks"].extend(generated_subtasks)
         target_task["updated_at"] = datetime.now().isoformat()
-        
+
         # Update task metadata if not present
         if "ai_expansion_metadata" not in target_task:
             target_task["ai_expansion_metadata"] = []
-        
+
         expansion_metadata = {
             "expansion_date": datetime.now().isoformat(),
             "subtasks_generated": len(generated_subtasks),
@@ -1732,23 +1857,25 @@ Rispondi SOLO con JSON valido contenente array di subtask.
             "lts_deps_used": use_lts_deps,
             "mentioned_technologies": mentioned_technologies,
             "generation_time": generation_result.get("generation_time", 0),
-            "generation_cost": generation_result.get("cost", 0)
+            "generation_cost": generation_result.get("cost", 0),
         }
         target_task["ai_expansion_metadata"].append(expansion_metadata)
-        
+
         # Save updated tasks
         try:
             save_tasks(project_root, data)
-            logger.info(f"Successfully expanded task {task_id} with {len(generated_subtasks)} subtasks")
+            logger.info(
+                f"Successfully expanded task {task_id} with {len(generated_subtasks)} subtasks"
+            )
         except Exception as save_error:
             logger.error(f"Failed to save expanded task: {save_error}")
             return {
                 "error": f"Failed to save expanded task: {str(save_error)}",
                 "generated_subtasks": generated_subtasks,
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Prepare success response
         result = {
             "success": True,
@@ -1763,27 +1890,29 @@ Rispondi SOLO con JSON valido contenente array di subtask.
                 "lts_deps_used": use_lts_deps,
                 "model_used": generation_result.get("model_used", "unknown"),
                 "generation_time": generation_result.get("generation_time", 0),
-                "cost": generation_result.get("cost", 0)
+                "cost": generation_result.get("cost", 0),
             },
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add research insights if used
         if use_research and mentioned_technologies:
             result["research_insights"] = {
                 "technologies_found": mentioned_technologies,
-                "best_practices_topic": topic_for_best_practices
+                "best_practices_topic": topic_for_best_practices,
             }
-        
-        logger.info(f"Task expansion completed successfully: {len(generated_subtasks)} subtasks added to task {task_id}")
+
+        logger.info(
+            f"Task expansion completed successfully: {len(generated_subtasks)} subtasks added to task {task_id}"
+        )
         return result
-        
+
     except Exception as e:
         logger.error(f"Error expanding task {task_id}: {str(e)}")
         return {
             "error": f"Failed to expand task: {str(e)}",
             "task_id": task_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -1792,127 +1921,128 @@ def next_task_tool(
     project_root: str,
     status_filter: Optional[str] = "pending",
     priority_order: Optional[str] = "high,medium,low",
-    include_blocked: bool = False
+    include_blocked: bool = False,
 ) -> Dict[str, Any]:
     """
     Suggerisce il prossimo task da affrontare basandosi su dipendenze, priorità e stato.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         status_filter: Stato dei task da considerare (default: "pending")
         priority_order: Ordine di priorità (default: "high,medium,low")
         include_blocked: Se includere task con dipendenze non completate
-        
+
     Returns:
         Dict contenente il task suggerito e le informazioni di selezione
     """
     try:
         logger.info(f"Finding next task for project: {project_root}")
-        
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
-            return {
-                "error": "No tasks file found",
-                "project_root": project_root
-            }
-        
+            return {"error": "No tasks file found", "project_root": project_root}
+
         tasks = data.get("tasks", [])
         if not tasks:
-            return {
-                "error": "No tasks available",
-                "project_root": project_root
-            }
-        
+            return {"error": "No tasks available", "project_root": project_root}
+
         # Parse priority order
         priority_levels = [p.strip() for p in priority_order.split(",")]
         priority_weight = {level: idx for idx, level in enumerate(priority_levels)}
-        
+
         # Filter tasks by status
         filtered_tasks = []
         for task in tasks:
             if task.get("status", "pending") == status_filter:
                 filtered_tasks.append(task)
-        
+
         if not filtered_tasks:
             return {
                 "message": f"No tasks found with status '{status_filter}'",
                 "total_tasks": len(tasks),
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Check dependencies and find available tasks
         available_tasks = []
         blocked_tasks = []
-        
+
         for task in filtered_tasks:
             task_id = task.get("id")
             dependencies = task.get("dependencies", [])
-            
+
             # Check if all dependencies are completed
             if dependencies:
                 deps_completed = True
                 pending_deps = []
-                
+
                 for dep_id in dependencies:
                     dep_task = next((t for t in tasks if t.get("id") == dep_id), None)
                     if not dep_task or dep_task.get("status") != "done":
                         deps_completed = False
                         pending_deps.append(dep_id)
-                
+
                 if deps_completed:
                     available_tasks.append(task)
                 else:
-                    blocked_tasks.append({
-                        "task": task,
-                        "pending_dependencies": pending_deps
-                    })
+                    blocked_tasks.append(
+                        {"task": task, "pending_dependencies": pending_deps}
+                    )
             else:
                 # No dependencies - task is available
                 available_tasks.append(task)
-        
+
         # If no available tasks and include_blocked is False
         if not available_tasks and not include_blocked:
             return {
                 "message": "No tasks available (all have unmet dependencies)",
                 "blocked_count": len(blocked_tasks),
-                "blocked_tasks": [{"id": bt["task"]["id"], "title": bt["task"]["title"], "pending_deps": bt["pending_dependencies"]} for bt in blocked_tasks],
+                "blocked_tasks": [
+                    {
+                        "id": bt["task"]["id"],
+                        "title": bt["task"]["title"],
+                        "pending_deps": bt["pending_dependencies"],
+                    }
+                    for bt in blocked_tasks
+                ],
                 "suggestion": "Consider completing dependency tasks first or set include_blocked=True",
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Choose tasks to rank (available first, then blocked if requested)
         tasks_to_rank = available_tasks[:]
         if include_blocked and blocked_tasks:
             tasks_to_rank.extend([bt["task"] for bt in blocked_tasks])
-        
+
         # Sort by priority and ID
         def task_sort_key(task):
             priority = task.get("priority", "medium")
-            priority_score = priority_weight.get(priority, 999)  # Unknown priorities go last
+            priority_score = priority_weight.get(
+                priority, 999
+            )  # Unknown priorities go last
             task_id = task.get("id", 999999)
             return (priority_score, task_id)
-        
+
         sorted_tasks = sorted(tasks_to_rank, key=task_sort_key)
-        
+
         if not sorted_tasks:
-            return {
-                "error": "No suitable tasks found",
-                "project_root": project_root
-            }
-        
+            return {"error": "No suitable tasks found", "project_root": project_root}
+
         # Select the next task
         next_task = sorted_tasks[0]
         task_id = next_task.get("id")
-        
+
         # Check if this task is blocked
         is_blocked = task_id in [bt["task"]["id"] for bt in blocked_tasks]
         pending_deps = []
         if is_blocked:
-            blocked_info = next((bt for bt in blocked_tasks if bt["task"]["id"] == task_id), None)
+            blocked_info = next(
+                (bt for bt in blocked_tasks if bt["task"]["id"] == task_id), None
+            )
             if blocked_info:
                 pending_deps = blocked_info["pending_dependencies"]
-        
+
         # Build result
         result = {
             "next_task": {
@@ -1923,7 +2053,7 @@ def next_task_tool(
                 "status": next_task.get("status"),
                 "dependencies": next_task.get("dependencies", []),
                 "details": next_task.get("details", ""),
-                "test_strategy": next_task.get("testStrategy", "")
+                "test_strategy": next_task.get("testStrategy", ""),
             },
             "selection_info": {
                 "total_tasks": len(tasks),
@@ -1931,36 +2061,36 @@ def next_task_tool(
                 "available_tasks": len(available_tasks),
                 "blocked_tasks": len(blocked_tasks),
                 "is_blocked": is_blocked,
-                "pending_dependencies": pending_deps
+                "pending_dependencies": pending_deps,
             },
             "recommendations": [],
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add recommendations
         if is_blocked:
             result["recommendations"].append(
                 f"Task {task_id} has pending dependencies: {pending_deps}. Consider completing these first."
             )
-        
+
         if len(available_tasks) > 1:
             result["recommendations"].append(
                 f"You have {len(available_tasks)} tasks available. This was selected based on priority and ID order."
             )
-        
+
         if blocked_tasks and not include_blocked:
             result["recommendations"].append(
                 f"{len(blocked_tasks)} tasks are blocked by dependencies. Use include_blocked=True to consider them."
             )
-        
+
         logger.info(f"Next task selected: {task_id} - {next_task.get('title')}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error finding next task: {str(e)}")
         return {
             "error": f"Failed to find next task: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -1971,11 +2101,11 @@ def analyze_complexity_tool(
     use_research: bool = False,
     complexity_threshold: int = 7,
     save_report: bool = True,
-    report_path: Optional[str] = None
+    report_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Analizza la complessità dei task usando AI (LiteLLM) per valutazioni accurate.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_ids: ID dei task da analizzare (comma-separated), se None analizza tutti i pending
@@ -1983,75 +2113,67 @@ def analyze_complexity_tool(
         complexity_threshold: Soglia per segnalare task complessi (1-10)
         save_report: Se salvare il report di complessità
         report_path: Path custom per il report (default: .pytaskai/reports/complexity_report.json)
-        
+
     Returns:
         Dict contenente analisi di complessità e raccomandazioni
     """
     try:
         logger.info(f"Analyzing task complexity for project: {project_root}")
-        
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
-            return {
-                "error": "No tasks file found",
-                "project_root": project_root
-            }
-        
+            return {"error": "No tasks file found", "project_root": project_root}
+
         tasks = data.get("tasks", [])
         if not tasks:
             return {
                 "error": "No tasks available for analysis",
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Determine which tasks to analyze
         target_tasks = []
         if task_ids:
             # Analyze specific tasks
             task_id_list = [int(tid.strip()) for tid in task_ids.split(",")]
             target_tasks = [t for t in tasks if t.get("id") in task_id_list]
-            
+
             if len(target_tasks) != len(task_id_list):
                 found_ids = [t.get("id") for t in target_tasks]
                 missing_ids = [tid for tid in task_id_list if tid not in found_ids]
                 return {
                     "error": f"Some task IDs not found: {missing_ids}",
                     "found_tasks": found_ids,
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
         else:
             # Analyze all pending tasks
             target_tasks = [t for t in tasks if t.get("status", "pending") == "pending"]
-        
+
         if not target_tasks:
-            return {
-                "message": "No tasks to analyze",
-                "project_root": project_root
-            }
-        
+            return {"message": "No tasks to analyze", "project_root": project_root}
+
         # Initialize AI service
         from .ai_service import ai_service_instance
+
         if not ai_service_instance:
-            return {
-                "error": "AI service not available",
-                "project_root": project_root
-            }
-        
+            return {"error": "AI service not available", "project_root": project_root}
+
         # Analyze each task
         complexity_results = []
         total_analysis_time = 0
         total_analysis_cost = 0
-        
+
         for task in target_tasks:
             task_id = task.get("id")
             task_title = task.get("title", "")
             task_description = task.get("description", "")
             task_details = task.get("details", "")
             task_dependencies = task.get("dependencies", [])
-            
+
             logger.info(f"Analyzing complexity for task {task_id}: {task_title}")
-            
+
             # Build analysis prompt
             analysis_prompt = f"""
 Analizza la complessità del seguente task di sviluppo software e fornisci una valutazione strutturata.
@@ -2095,61 +2217,72 @@ Analizza la complessità del seguente task di sviluppo software e fornisci una v
 
 Fornisci SOLO il JSON senza testo aggiuntivo.
 """
-            
+
             try:
                 # Get AI analysis
                 start_time = time.time()
-                
+
                 if use_research:
                     # Use research context
                     analysis_response = ai_service_instance.generate_task_with_ai(
                         prompt=analysis_prompt,
                         project_context=f"Task complexity analysis for: {task_title}",
                         use_research=True,
-                        research_query=f"software development complexity analysis {task_title} best practices"
+                        research_query=f"software development complexity analysis {task_title} best practices",
                     )
                 else:
                     # Direct analysis
                     analysis_response = ai_service_instance.generate_task_with_ai(
                         prompt=analysis_prompt,
                         project_context=f"Task complexity analysis for: {task_title}",
-                        use_research=False
+                        use_research=False,
                     )
-                
+
                 analysis_time = time.time() - start_time
                 total_analysis_time += analysis_time
-                
+
                 # Track costs if available
-                if hasattr(analysis_response, 'usage_cost') and analysis_response.usage_cost:
+                if (
+                    hasattr(analysis_response, "usage_cost")
+                    and analysis_response.usage_cost
+                ):
                     total_analysis_cost += analysis_response.usage_cost
-                
+
                 # Parse JSON response
-                analysis_content = analysis_response.content if hasattr(analysis_response, 'content') else str(analysis_response)
-                
+                analysis_content = (
+                    analysis_response.content
+                    if hasattr(analysis_response, "content")
+                    else str(analysis_response)
+                )
+
                 # Try multiple JSON parsing strategies
                 complexity_data = None
                 json_patterns = [
-                    r'```json\s*(\{.*?\})\s*```',
-                    r'```\s*(\{.*?\})\s*```',
-                    r'(\{.*?\})'
+                    r"```json\s*(\{.*?\})\s*```",
+                    r"```\s*(\{.*?\})\s*```",
+                    r"(\{.*?\})",
                 ]
-                
+
                 for pattern in json_patterns:
-                    matches = re.findall(pattern, analysis_content, re.DOTALL | re.IGNORECASE)
+                    matches = re.findall(
+                        pattern, analysis_content, re.DOTALL | re.IGNORECASE
+                    )
                     if matches:
                         try:
                             complexity_data = json.loads(matches[0].strip())
                             break
                         except json.JSONDecodeError:
                             continue
-                
+
                 # Fallback: create basic analysis
                 if not complexity_data:
-                    logger.warning(f"Failed to parse AI response for task {task_id}, using fallback")
-                    
+                    logger.warning(
+                        f"Failed to parse AI response for task {task_id}, using fallback"
+                    )
+
                     # Simple heuristic-based complexity estimation
                     estimated_complexity = 5  # Default medium
-                    
+
                     # Adjust based on task characteristics
                     if len(task_dependencies) > 3:
                         estimated_complexity += 1
@@ -2159,9 +2292,9 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
                         estimated_complexity += 1
                     if "test" in task_title.lower():
                         estimated_complexity -= 1
-                        
+
                     estimated_complexity = max(1, min(10, estimated_complexity))
-                    
+
                     complexity_data = {
                         "task_id": task_id,
                         "complexity_score": estimated_complexity,
@@ -2171,55 +2304,70 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
                         "risk_level": estimated_complexity,
                         "estimated_hours": estimated_complexity * 2,
                         "reasoning": f"Automatic analysis based on task characteristics. Dependencies: {len(task_dependencies)}, Details length: {len(task_details)}",
-                        "recommendations": ["Consider breaking down into smaller subtasks if complexity > 7"],
+                        "recommendations": [
+                            "Consider breaking down into smaller subtasks if complexity > 7"
+                        ],
                         "potential_blockers": ["Review dependencies before starting"],
-                        "suggested_subtasks": ["Planning", "Implementation", "Testing"]
+                        "suggested_subtasks": ["Planning", "Implementation", "Testing"],
                     }
-                
+
                 # Add metadata
                 complexity_data["analysis_metadata"] = {
                     "analyzed_at": datetime.now().isoformat(),
                     "analysis_time": analysis_time,
                     "use_research": use_research,
-                    "model_used": getattr(ai_service_instance, 'current_model', 'unknown'),
-                    "ai_generated": complexity_data.get("complexity_score") != estimated_complexity if 'estimated_complexity' in locals() else True
+                    "model_used": getattr(
+                        ai_service_instance, "current_model", "unknown"
+                    ),
+                    "ai_generated": (
+                        complexity_data.get("complexity_score") != estimated_complexity
+                        if "estimated_complexity" in locals()
+                        else True
+                    ),
                 }
-                
+
                 complexity_results.append(complexity_data)
-                logger.info(f"Task {task_id} complexity: {complexity_data.get('complexity_score', 'unknown')}/10")
-                
+                logger.info(
+                    f"Task {task_id} complexity: {complexity_data.get('complexity_score', 'unknown')}/10"
+                )
+
             except Exception as e:
                 logger.error(f"Error analyzing task {task_id}: {str(e)}")
                 # Add error entry
-                complexity_results.append({
-                    "task_id": task_id,
-                    "error": f"Analysis failed: {str(e)}",
-                    "analysis_metadata": {
-                        "analyzed_at": datetime.now().isoformat(),
-                        "analysis_time": 0,
-                        "use_research": use_research
+                complexity_results.append(
+                    {
+                        "task_id": task_id,
+                        "error": f"Analysis failed: {str(e)}",
+                        "analysis_metadata": {
+                            "analyzed_at": datetime.now().isoformat(),
+                            "analysis_time": 0,
+                            "use_research": use_research,
+                        },
                     }
-                })
-        
+                )
+
         # Build summary report
         successful_analyses = [r for r in complexity_results if "error" not in r]
         failed_analyses = [r for r in complexity_results if "error" in r]
-        
+
         if successful_analyses:
-            complexity_scores = [r.get("complexity_score", 0) for r in successful_analyses]
+            complexity_scores = [
+                r.get("complexity_score", 0) for r in successful_analyses
+            ]
             avg_complexity = sum(complexity_scores) / len(complexity_scores)
             max_complexity = max(complexity_scores)
             min_complexity = min(complexity_scores)
-            
+
             # Identify high complexity tasks
             high_complexity_tasks = [
-                r for r in successful_analyses 
+                r
+                for r in successful_analyses
                 if r.get("complexity_score", 0) >= complexity_threshold
             ]
         else:
             avg_complexity = max_complexity = min_complexity = 0
             high_complexity_tasks = []
-        
+
         # Build final report
         report = {
             "analysis_summary": {
@@ -2230,7 +2378,7 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
                 "max_complexity": max_complexity,
                 "min_complexity": min_complexity,
                 "high_complexity_count": len(high_complexity_tasks),
-                "complexity_threshold": complexity_threshold
+                "complexity_threshold": complexity_threshold,
             },
             "task_analyses": complexity_results,
             "high_complexity_tasks": high_complexity_tasks,
@@ -2241,63 +2389,71 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
                 "analysis_settings": {
                     "use_research": use_research,
                     "complexity_threshold": complexity_threshold,
-                    "task_ids_filter": task_ids
+                    "task_ids_filter": task_ids,
                 },
                 "performance": {
                     "total_analysis_time": round(total_analysis_time, 2),
                     "total_analysis_cost": round(total_analysis_cost, 4),
-                    "average_time_per_task": round(total_analysis_time / len(target_tasks), 2) if target_tasks else 0
-                }
-            }
+                    "average_time_per_task": (
+                        round(total_analysis_time / len(target_tasks), 2)
+                        if target_tasks
+                        else 0
+                    ),
+                },
+            },
         }
-        
+
         # Add recommendations
         if high_complexity_tasks:
             report["recommendations"].append(
                 f"Consider expanding {len(high_complexity_tasks)} high-complexity tasks into subtasks"
             )
-        
+
         if avg_complexity > 6:
             report["recommendations"].append(
                 "Average complexity is high - consider reviewing project scope and timelines"
             )
-        
+
         if failed_analyses:
             report["recommendations"].append(
                 f"Re-run analysis for {len(failed_analyses)} failed task(s) with different settings"
             )
-        
+
         # Save report if requested
         if save_report:
             try:
                 # Determine report path
                 if not report_path:
-                    reports_dir = get_reports_directory(project_root)  # PyTaskAI: Use standardized path
+                    reports_dir = get_reports_directory(
+                        project_root
+                    )  # PyTaskAI: Use standardized path
                     reports_dir.mkdir(parents=True, exist_ok=True)
                     report_path = reports_dir / "complexity_report.json"
                 else:
                     report_path = Path(project_root) / report_path
                     report_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Save report
-                with open(report_path, 'w') as f:
+                with open(report_path, "w") as f:
                     json.dump(report, f, indent=2)
-                
+
                 report["saved_report_path"] = str(report_path)
                 logger.info(f"Complexity report saved to: {report_path}")
-                
+
             except Exception as e:
                 logger.error(f"Failed to save complexity report: {str(e)}")
                 report["save_error"] = f"Failed to save report: {str(e)}"
-        
-        logger.info(f"Complexity analysis completed: {len(successful_analyses)}/{len(target_tasks)} tasks analyzed")
+
+        logger.info(
+            f"Complexity analysis completed: {len(successful_analyses)}/{len(target_tasks)} tasks analyzed"
+        )
         return report
-        
+
     except Exception as e:
         logger.error(f"Error in complexity analysis: {str(e)}")
         return {
             "error": f"Failed to analyze complexity: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -2309,91 +2465,88 @@ def update_subtask_tool(
     update_prompt: str,
     use_research: bool = False,
     preserve_existing: bool = True,
-    update_fields: Optional[str] = "details,title,description"
+    update_fields: Optional[str] = "details,title,description",
 ) -> Dict[str, Any]:
     """
     Aggiorna un subtask specifico usando AI (LiteLLM) per raffinare i dettagli.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task padre
-        subtask_id: ID del subtask da aggiornare  
+        subtask_id: ID del subtask da aggiornare
         update_prompt: Prompt con le modifiche/raffinamenti richiesti
         use_research: Se usare ricerca per context aggiuntivo
         preserve_existing: Se preservare informazioni esistenti non modificate
         update_fields: Campi da aggiornare (comma-separated: title,description,details,test_strategy)
-        
+
     Returns:
         Dict contenente risultato dell'aggiornamento
     """
     try:
-        logger.info(f"Updating subtask {subtask_id} of task {task_id} in project: {project_root}")
-        
+        logger.info(
+            f"Updating subtask {subtask_id} of task {task_id} in project: {project_root}"
+        )
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
-            return {
-                "error": "No tasks file found",
-                "project_root": project_root
-            }
-        
+            return {"error": "No tasks file found", "project_root": project_root}
+
         tasks = data.get("tasks", [])
         task_id = int(task_id)
         subtask_id = int(subtask_id)
-        
+
         # Find parent task
         parent_task = None
         for task in tasks:
             if task.get("id") == task_id:
                 parent_task = task
                 break
-        
+
         if not parent_task:
             return {
                 "error": f"Parent task {task_id} not found",
                 "task_id": task_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Find subtask
         subtasks = parent_task.get("subtasks", [])
         target_subtask = None
         subtask_index = None
-        
+
         for i, subtask in enumerate(subtasks):
             if subtask.get("id") == subtask_id:
                 target_subtask = subtask
                 subtask_index = i
                 break
-        
+
         if not target_subtask:
             return {
                 "error": f"Subtask {subtask_id} not found in task {task_id}",
                 "task_id": task_id,
                 "subtask_id": subtask_id,
                 "available_subtasks": [s.get("id") for s in subtasks],
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Initialize AI service
         from .ai_service import ai_service_instance
+
         if not ai_service_instance:
-            return {
-                "error": "AI service not available",
-                "project_root": project_root
-            }
-        
+            return {"error": "AI service not available", "project_root": project_root}
+
         # Parse update fields
         fields_to_update = [f.strip() for f in update_fields.split(",")]
         valid_fields = ["title", "description", "details", "test_strategy"]
         fields_to_update = [f for f in fields_to_update if f in valid_fields]
-        
+
         if not fields_to_update:
             return {
                 "error": f"No valid fields to update. Valid fields: {valid_fields}",
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Get current subtask content
         current_title = target_subtask.get("title", "")
         current_description = target_subtask.get("description", "")
@@ -2401,7 +2554,7 @@ def update_subtask_tool(
         current_test_strategy = target_subtask.get("test_strategy", "")
         current_status = target_subtask.get("status", "pending")
         current_dependencies = target_subtask.get("dependencies", [])
-        
+
         # Build context about parent task
         parent_context = f"""
 ## Parent Task Context:
@@ -2411,7 +2564,7 @@ def update_subtask_tool(
 **Details**: {parent_task.get('details', '')}
 **Priority**: {parent_task.get('priority', 'medium')}
 """
-        
+
         # Build refinement prompt
         refinement_prompt = f"""
 Sei un esperto di project management e sviluppo software. Devi raffinare un subtask specifico basandoti sul prompt di aggiornamento fornito.
@@ -2456,11 +2609,11 @@ Sei un esperto di project management e sviluppo software. Devi raffinare un subt
 
 Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON senza testo aggiuntivo.
 """
-        
+
         try:
             # Get AI refinement
             start_time = time.time()
-            
+
             if use_research:
                 # Use research context for more informed updates
                 research_query = f"software development subtask refinement {current_title} best practices implementation"
@@ -2468,50 +2621,61 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                     prompt=refinement_prompt,
                     project_context=f"Subtask refinement for: {current_title}",
                     use_research=True,
-                    research_query=research_query
+                    research_query=research_query,
                 )
             else:
                 # Direct refinement
                 refinement_response = ai_service_instance.generate_task_with_ai(
                     prompt=refinement_prompt,
                     project_context=f"Subtask refinement for: {current_title}",
-                    use_research=False
+                    use_research=False,
                 )
-            
+
             refinement_time = time.time() - start_time
-            
+
             # Track costs if available
             refinement_cost = 0
-            if hasattr(refinement_response, 'usage_cost') and refinement_response.usage_cost:
+            if (
+                hasattr(refinement_response, "usage_cost")
+                and refinement_response.usage_cost
+            ):
                 refinement_cost = refinement_response.usage_cost
-            
+
             # Parse JSON response
-            refinement_content = refinement_response.content if hasattr(refinement_response, 'content') else str(refinement_response)
-            
+            refinement_content = (
+                refinement_response.content
+                if hasattr(refinement_response, "content")
+                else str(refinement_response)
+            )
+
             # Try multiple JSON parsing strategies
             refinement_data = None
             json_patterns = [
-                r'```json\s*(\{.*?\})\s*```',
-                r'```\s*(\{.*?\})\s*```',
-                r'(\{.*?\})'
+                r"```json\s*(\{.*?\})\s*```",
+                r"```\s*(\{.*?\})\s*```",
+                r"(\{.*?\})",
             ]
-            
+
             for pattern in json_patterns:
-                matches = re.findall(pattern, refinement_content, re.DOTALL | re.IGNORECASE)
+                matches = re.findall(
+                    pattern, refinement_content, re.DOTALL | re.IGNORECASE
+                )
                 if matches:
                     try:
                         refinement_data = json.loads(matches[0].strip())
                         break
                     except json.JSONDecodeError:
                         continue
-            
+
             # Fallback: create enhanced version using simple rules
             if not refinement_data:
-                logger.warning(f"Failed to parse AI response for subtask {subtask_id}, using enhanced fallback")
-                
+                logger.warning(
+                    f"Failed to parse AI response for subtask {subtask_id}, using enhanced fallback"
+                )
+
                 # Enhanced fallback based on update prompt
                 refinement_data = {}
-                
+
                 if "title" in fields_to_update:
                     enhanced_title = current_title
                     if update_prompt and len(update_prompt) > 10:
@@ -2523,7 +2687,7 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                         elif "refactor" in update_prompt.lower():
                             enhanced_title = f"Refactoring: {current_title}"
                     refinement_data["title"] = enhanced_title
-                
+
                 if "description" in fields_to_update:
                     enhanced_desc = current_description
                     if preserve_existing and current_description:
@@ -2531,44 +2695,51 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                     else:
                         enhanced_desc = f"Subtask raffinato: {update_prompt[:200]}..."
                     refinement_data["description"] = enhanced_desc
-                
+
                 if "details" in fields_to_update:
                     enhanced_details = current_details
                     if preserve_existing and current_details:
-                        enhanced_details = f"{current_details}\n\n## Aggiornamenti:\n{update_prompt}"
+                        enhanced_details = (
+                            f"{current_details}\n\n## Aggiornamenti:\n{update_prompt}"
+                        )
                     else:
                         enhanced_details = f"Dettagli implementativi:\n1. {update_prompt}\n2. Implementare logica base\n3. Testare funzionalità"
                     refinement_data["details"] = enhanced_details
-                
+
                 if "test_strategy" in fields_to_update:
                     enhanced_test = current_test_strategy
                     if not enhanced_test or not preserve_existing:
                         enhanced_test = "1. Unit test per funzionalità core\n2. Test di integrazione\n3. Validazione manuale"
                     refinement_data["test_strategy"] = enhanced_test
-                
-                refinement_data["reasoning"] = f"Fallback enhancement based on update prompt: {update_prompt[:100]}..."
-                refinement_data["improvements_made"] = ["Enhanced based on update request", "Preserved existing information"]
-            
+
+                refinement_data["reasoning"] = (
+                    f"Fallback enhancement based on update prompt: {update_prompt[:100]}..."
+                )
+                refinement_data["improvements_made"] = [
+                    "Enhanced based on update request",
+                    "Preserved existing information",
+                ]
+
             # Update subtask with refined content
             updated_subtask = target_subtask.copy()
             changes_made = []
-            
+
             for field in fields_to_update:
                 if field in refinement_data:
                     old_value = updated_subtask.get(field, "")
                     new_value = refinement_data[field]
-                    
+
                     if old_value != new_value:
                         updated_subtask[field] = new_value
                         changes_made.append(f"{field}: updated")
                     else:
                         changes_made.append(f"{field}: no change")
-            
+
             # Add update metadata
             updated_subtask["updated_at"] = datetime.now().isoformat()
             if "ai_update_history" not in updated_subtask:
                 updated_subtask["ai_update_history"] = []
-            
+
             update_metadata = {
                 "updated_at": datetime.now().isoformat(),
                 "update_prompt": update_prompt,
@@ -2577,18 +2748,18 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                 "preserve_existing": preserve_existing,
                 "refinement_time": refinement_time,
                 "refinement_cost": refinement_cost,
-                "model_used": getattr(ai_service_instance, 'current_model', 'unknown'),
+                "model_used": getattr(ai_service_instance, "current_model", "unknown"),
                 "changes_made": changes_made,
                 "reasoning": refinement_data.get("reasoning", "AI refinement applied"),
-                "improvements": refinement_data.get("improvements_made", [])
+                "improvements": refinement_data.get("improvements_made", []),
             }
-            
+
             updated_subtask["ai_update_history"].append(update_metadata)
-            
+
             # Update subtasks list
             subtasks[subtask_index] = updated_subtask
             parent_task["subtasks"] = subtasks
-            
+
             # Save updated tasks
             success = save_tasks(project_root, data)
             if not success:
@@ -2596,9 +2767,9 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                     "error": "Failed to save updated subtask",
                     "task_id": task_id,
                     "subtask_id": subtask_id,
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-            
+
             # Build result
             result = {
                 "success": True,
@@ -2611,34 +2782,38 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                     "use_research": use_research,
                     "preserve_existing": preserve_existing,
                     "reasoning": refinement_data.get("reasoning", ""),
-                    "improvements": refinement_data.get("improvements_made", [])
+                    "improvements": refinement_data.get("improvements_made", []),
                 },
                 "performance": {
                     "refinement_time": round(refinement_time, 2),
-                    "refinement_cost": round(refinement_cost, 4)
+                    "refinement_cost": round(refinement_cost, 4),
                 },
-                "project_root": project_root
+                "project_root": project_root,
             }
-            
-            logger.info(f"Subtask {subtask_id} updated successfully with {len(changes_made)} changes")
+
+            logger.info(
+                f"Subtask {subtask_id} updated successfully with {len(changes_made)} changes"
+            )
             return result
-            
+
         except Exception as e:
-            logger.error(f"Error during AI refinement for subtask {subtask_id}: {str(e)}")
+            logger.error(
+                f"Error during AI refinement for subtask {subtask_id}: {str(e)}"
+            )
             return {
                 "error": f"AI refinement failed: {str(e)}",
                 "task_id": task_id,
                 "subtask_id": subtask_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
     except Exception as e:
         logger.error(f"Error updating subtask {subtask_id}: {str(e)}")
         return {
             "error": f"Failed to update subtask: {str(e)}",
             "task_id": task_id,
             "subtask_id": subtask_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
@@ -2647,23 +2822,25 @@ def add_dependency_tool(
     project_root: str,
     task_id: Union[int, str],
     dependency_id: Union[int, str],
-    validate_circular: bool = True
+    validate_circular: bool = True,
 ) -> Dict[str, Any]:
     """
     Aggiunge una dipendenza a un task specifico.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task che dipende da un altro
         dependency_id: ID del task da cui dipende
         validate_circular: Se validare dipendenze circolari (raccomandato)
-        
+
     Returns:
         Dict contenente risultato dell'operazione
     """
     try:
-        logger.info(f"Adding dependency for project: {project_root}, task {task_id} depends on {dependency_id}")
-        
+        logger.info(
+            f"Adding dependency for project: {project_root}, task {task_id} depends on {dependency_id}"
+        )
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
@@ -2671,44 +2848,44 @@ def add_dependency_tool(
                 "error": "No tasks file found",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
         task_id = int(task_id)
         dependency_id = int(dependency_id)
-        
+
         # Validate that both tasks exist
         task_exists = any(t.get("id") == task_id for t in tasks)
         dependency_exists = any(t.get("id") == dependency_id for t in tasks)
-        
+
         if not task_exists:
             return {
                 "error": f"Task with ID {task_id} not found",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         if not dependency_exists:
             return {
                 "error": f"Dependency task with ID {dependency_id} not found",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Find the target task
         target_task = None
         for task in tasks:
             if task.get("id") == task_id:
                 target_task = task
                 break
-        
+
         # Ensure dependencies array exists
         if "dependencies" not in target_task:
             target_task["dependencies"] = []
-        
+
         # Check if dependency already exists
         if dependency_id in target_task["dependencies"]:
             return {
@@ -2716,60 +2893,67 @@ def add_dependency_tool(
                 "task_id": task_id,
                 "dependency_id": dependency_id,
                 "existing_dependencies": target_task["dependencies"],
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Check for circular dependencies if validation enabled
         if validate_circular:
+
             def has_circular_dependency(current_id, target_id, visited=None):
                 if visited is None:
                     visited = set()
-                
+
                 if current_id in visited:
                     return True
-                
+
                 visited.add(current_id)
-                
-                current_task = next((t for t in tasks if t.get("id") == current_id), None)
+
+                current_task = next(
+                    (t for t in tasks if t.get("id") == current_id), None
+                )
                 if not current_task:
                     return False
-                
+
                 for dep_id in current_task.get("dependencies", []):
-                    if dep_id == target_id or has_circular_dependency(dep_id, target_id, visited.copy()):
+                    if dep_id == target_id or has_circular_dependency(
+                        dep_id, target_id, visited.copy()
+                    ):
                         return True
-                
+
                 return False
-            
+
             if has_circular_dependency(dependency_id, task_id):
                 return {
                     "error": f"Adding dependency would create circular dependency: task {dependency_id} already depends on task {task_id}",
                     "task_id": task_id,
                     "dependency_id": dependency_id,
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-        
+
         # Add the dependency
         target_task["dependencies"].append(dependency_id)
         target_task["updated_at"] = datetime.now().isoformat()
-        
+
         # Save updated tasks
         try:
             save_tasks(project_root, data)
-            logger.info(f"Successfully added dependency: task {task_id} now depends on task {dependency_id}")
+            logger.info(
+                f"Successfully added dependency: task {task_id} now depends on task {dependency_id}"
+            )
         except Exception as save_error:
             logger.error(f"Failed to save tasks: {save_error}")
             return {
                 "error": f"Failed to save dependency update: {str(save_error)}",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Get task titles for context
         task_title = target_task.get("title", f"Task {task_id}")
         dependency_task = next((t for t in tasks if t.get("id") == dependency_id), {})
         dependency_title = dependency_task.get("title", f"Task {dependency_id}")
-        
+
         result = {
             "success": True,
             "message": f"Successfully added dependency: '{task_title}' now depends on '{dependency_title}'",
@@ -2779,19 +2963,19 @@ def add_dependency_tool(
             "dependency_title": dependency_title,
             "updated_dependencies": target_task["dependencies"],
             "updated_at": target_task["updated_at"],
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         logger.info(f"Dependency added successfully: {task_id} -> {dependency_id}")
         return result
-        
+
     except ValueError as ve:
         logger.error(f"Value error in add_dependency: {str(ve)}")
         return {
             "error": f"Invalid input: {str(ve)}",
             "task_id": task_id,
             "dependency_id": dependency_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
     except Exception as e:
         logger.error(f"Error adding dependency: {str(e)}")
@@ -2799,30 +2983,30 @@ def add_dependency_tool(
             "error": f"Failed to add dependency: {str(e)}",
             "task_id": task_id,
             "dependency_id": dependency_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def remove_dependency_tool(
-    project_root: str,
-    task_id: Union[int, str],
-    dependency_id: Union[int, str]
+    project_root: str, task_id: Union[int, str], dependency_id: Union[int, str]
 ) -> Dict[str, Any]:
     """
     Rimuove una dipendenza da un task specifico.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task da cui rimuovere la dipendenza
         dependency_id: ID del task da rimuovere dalle dipendenze
-        
+
     Returns:
         Dict contenente risultato dell'operazione
     """
     try:
-        logger.info(f"Removing dependency for project: {project_root}, task {task_id} no longer depends on {dependency_id}")
-        
+        logger.info(
+            f"Removing dependency for project: {project_root}, task {task_id} no longer depends on {dependency_id}"
+        )
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
@@ -2830,28 +3014,28 @@ def remove_dependency_tool(
                 "error": "No tasks file found",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         tasks = data.get("tasks", [])
         task_id = int(task_id)
         dependency_id = int(dependency_id)
-        
+
         # Find the target task
         target_task = None
         for task in tasks:
             if task.get("id") == task_id:
                 target_task = task
                 break
-        
+
         if not target_task:
             return {
                 "error": f"Task with ID {task_id} not found",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Check if task has dependencies
         dependencies = target_task.get("dependencies", [])
         if not dependencies:
@@ -2859,9 +3043,9 @@ def remove_dependency_tool(
                 "error": f"Task {task_id} has no dependencies to remove",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Check if dependency exists
         if dependency_id not in dependencies:
             return {
@@ -2869,32 +3053,34 @@ def remove_dependency_tool(
                 "task_id": task_id,
                 "dependency_id": dependency_id,
                 "existing_dependencies": dependencies,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Remove the dependency
         dependencies.remove(dependency_id)
         target_task["dependencies"] = dependencies
         target_task["updated_at"] = datetime.now().isoformat()
-        
+
         # Save updated tasks
         try:
             save_tasks(project_root, data)
-            logger.info(f"Successfully removed dependency: task {task_id} no longer depends on task {dependency_id}")
+            logger.info(
+                f"Successfully removed dependency: task {task_id} no longer depends on task {dependency_id}"
+            )
         except Exception as save_error:
             logger.error(f"Failed to save tasks: {save_error}")
             return {
                 "error": f"Failed to save dependency removal: {str(save_error)}",
                 "task_id": task_id,
                 "dependency_id": dependency_id,
-                "project_root": project_root
+                "project_root": project_root,
             }
-        
+
         # Get task titles for context
         task_title = target_task.get("title", f"Task {task_id}")
         dependency_task = next((t for t in tasks if t.get("id") == dependency_id), {})
         dependency_title = dependency_task.get("title", f"Task {dependency_id}")
-        
+
         result = {
             "success": True,
             "message": f"Successfully removed dependency: '{task_title}' no longer depends on '{dependency_title}'",
@@ -2904,19 +3090,19 @@ def remove_dependency_tool(
             "dependency_title": dependency_title,
             "remaining_dependencies": dependencies,
             "updated_at": target_task["updated_at"],
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         logger.info(f"Dependency removed successfully: {task_id} -/-> {dependency_id}")
         return result
-        
+
     except ValueError as ve:
         logger.error(f"Value error in remove_dependency: {str(ve)}")
         return {
             "error": f"Invalid input: {str(ve)}",
             "task_id": task_id,
             "dependency_id": dependency_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
     except Exception as e:
         logger.error(f"Error removing dependency: {str(e)}")
@@ -2924,39 +3110,37 @@ def remove_dependency_tool(
             "error": f"Failed to remove dependency: {str(e)}",
             "task_id": task_id,
             "dependency_id": dependency_id,
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 @mcp.tool()
 def validate_dependencies_tool(
-    project_root: str,
-    fix_issues: bool = False
+    project_root: str, fix_issues: bool = False
 ) -> Dict[str, Any]:
     """
     Valida l'integrità delle dipendenze tra task e identifica problemi.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         fix_issues: Se correggere automaticamente i problemi trovati
-        
+
     Returns:
         Dict contenente risultati della validazione e problemi trovati
     """
     try:
-        logger.info(f"Validating dependencies for project: {project_root}, fix_issues: {fix_issues}")
-        
+        logger.info(
+            f"Validating dependencies for project: {project_root}, fix_issues: {fix_issues}"
+        )
+
         # Load tasks data
         data = load_tasks(project_root)
         if not data:
-            return {
-                "error": "No tasks file found",
-                "project_root": project_root
-            }
-        
+            return {"error": "No tasks file found", "project_root": project_root}
+
         tasks = data.get("tasks", [])
         task_ids = {t.get("id") for t in tasks}
-        
+
         # Validation results
         validation_results = {
             "is_valid": True,
@@ -2968,22 +3152,24 @@ def validate_dependencies_tool(
                 "tasks_with_dependencies": 0,
                 "total_dependencies": 0,
                 "orphaned_dependencies": 0,
-                "circular_dependencies": 0
-            }
+                "circular_dependencies": 0,
+            },
         }
-        
+
         # Track changes for potential fixes
         fixes_made = False
-        
+
         # Check each task's dependencies
         for task in tasks:
             task_id = task.get("id")
             dependencies = task.get("dependencies", [])
-            
+
             if dependencies:
                 validation_results["statistics"]["tasks_with_dependencies"] += 1
-                validation_results["statistics"]["total_dependencies"] += len(dependencies)
-            
+                validation_results["statistics"]["total_dependencies"] += len(
+                    dependencies
+                )
+
             # Check for orphaned dependencies (references to non-existent tasks)
             orphaned_deps = []
             for dep_id in dependencies:
@@ -2991,16 +3177,16 @@ def validate_dependencies_tool(
                     orphaned_deps.append(dep_id)
                     validation_results["statistics"]["orphaned_dependencies"] += 1
                     validation_results["is_valid"] = False
-                    
+
                     issue = {
                         "type": "orphaned_dependency",
                         "task_id": task_id,
                         "task_title": task.get("title", f"Task {task_id}"),
                         "orphaned_dependency_id": dep_id,
-                        "description": f"Task {task_id} depends on non-existent task {dep_id}"
+                        "description": f"Task {task_id} depends on non-existent task {dep_id}",
                     }
                     validation_results["issues_found"].append(issue)
-            
+
             # Fix orphaned dependencies if requested
             if fix_issues and orphaned_deps:
                 original_deps = dependencies.copy()
@@ -3008,42 +3194,42 @@ def validate_dependencies_tool(
                 task["dependencies"] = new_deps
                 task["updated_at"] = datetime.now().isoformat()
                 fixes_made = True
-                
+
                 fix_record = {
                     "type": "removed_orphaned_dependencies",
                     "task_id": task_id,
                     "removed_dependencies": orphaned_deps,
                     "original_dependencies": original_deps,
-                    "new_dependencies": new_deps
+                    "new_dependencies": new_deps,
                 }
                 validation_results["fixes_applied"].append(fix_record)
-        
+
         # Check for circular dependencies
         def find_circular_dependencies():
             circular_deps = []
-            
+
             def has_path(start_id, end_id, visited=None):
                 if visited is None:
                     visited = set()
-                
+
                 if start_id == end_id and visited:
                     return True
-                
+
                 if start_id in visited:
                     return False
-                
+
                 visited.add(start_id)
-                
+
                 start_task = next((t for t in tasks if t.get("id") == start_id), None)
                 if not start_task:
                     return False
-                
+
                 for dep_id in start_task.get("dependencies", []):
                     if dep_id in task_ids and has_path(dep_id, end_id, visited.copy()):
                         return True
-                
+
                 return False
-            
+
             for task in tasks:
                 task_id = task.get("id")
                 for dep_id in task.get("dependencies", []):
@@ -3051,88 +3237,93 @@ def validate_dependencies_tool(
                         circular_deps.append((task_id, dep_id))
                         validation_results["statistics"]["circular_dependencies"] += 1
                         validation_results["is_valid"] = False
-                        
+
                         issue = {
                             "type": "circular_dependency",
                             "task_id": task_id,
                             "task_title": task.get("title", f"Task {task_id}"),
                             "dependency_id": dep_id,
-                            "description": f"Circular dependency detected: task {task_id} ↔ task {dep_id}"
+                            "description": f"Circular dependency detected: task {task_id} ↔ task {dep_id}",
                         }
                         validation_results["issues_found"].append(issue)
-            
+
             return circular_deps
-        
+
         circular_deps = find_circular_dependencies()
-        
+
         # Add warnings for potential issues
-        high_dependency_tasks = [
-            t for t in tasks 
-            if len(t.get("dependencies", [])) > 5
-        ]
-        
+        high_dependency_tasks = [t for t in tasks if len(t.get("dependencies", [])) > 5]
+
         for task in high_dependency_tasks:
             warning = {
                 "type": "high_dependency_count",
                 "task_id": task.get("id"),
                 "task_title": task.get("title", f"Task {task.get('id')}"),
                 "dependency_count": len(task.get("dependencies", [])),
-                "description": f"Task has {len(task.get('dependencies', []))} dependencies (consider breaking down)"
+                "description": f"Task has {len(task.get('dependencies', []))} dependencies (consider breaking down)",
             }
             validation_results["warnings"].append(warning)
-        
+
         # Save fixes if any were made
         if fixes_made:
             try:
                 save_tasks(project_root, data)
-                logger.info(f"Applied {len(validation_results['fixes_applied'])} dependency fixes")
+                logger.info(
+                    f"Applied {len(validation_results['fixes_applied'])} dependency fixes"
+                )
             except Exception as save_error:
                 logger.error(f"Failed to save dependency fixes: {save_error}")
                 return {
                     "error": f"Failed to save dependency fixes: {str(save_error)}",
                     "validation_results": validation_results,
-                    "project_root": project_root
+                    "project_root": project_root,
                 }
-        
+
         # Prepare final result
         result = {
             "success": True,
             "validation_results": validation_results,
             "timestamp": datetime.now().isoformat(),
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         # Add summary
         issues_count = len(validation_results["issues_found"])
         warnings_count = len(validation_results["warnings"])
         fixes_count = len(validation_results["fixes_applied"])
-        
+
         if validation_results["is_valid"]:
-            result["summary"] = f"✅ Dependencies validation passed. {warnings_count} warnings found."
+            result["summary"] = (
+                f"✅ Dependencies validation passed. {warnings_count} warnings found."
+            )
         else:
-            result["summary"] = f"❌ Dependencies validation failed. {issues_count} issues found."
+            result["summary"] = (
+                f"❌ Dependencies validation failed. {issues_count} issues found."
+            )
             if fix_issues:
                 result["summary"] += f" {fixes_count} fixes applied."
-        
-        logger.info(f"Dependencies validation completed: valid={validation_results['is_valid']}, issues={issues_count}, fixes={fixes_count}")
+
+        logger.info(
+            f"Dependencies validation completed: valid={validation_results['is_valid']}, issues={issues_count}, fixes={fixes_count}"
+        )
         return result
-        
+
     except Exception as e:
         logger.error(f"Error validating dependencies: {str(e)}")
         return {
             "error": f"Failed to validate dependencies: {str(e)}",
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 # Export the MCP server for use in main application
 __all__ = [
-    "mcp", 
-    "list_tasks_tool", 
-    "get_task_tool", 
-    "get_next_task_tool", 
-    "validate_tasks_tool", 
-    "init_claude_support_tool", 
+    "mcp",
+    "list_tasks_tool",
+    "get_task_tool",
+    "get_next_task_tool",
+    "validate_tasks_tool",
+    "init_claude_support_tool",
     "parse_prd_tool",
     "get_cache_metrics_tool",
     "clear_cache_tool",
@@ -3144,5 +3335,5 @@ __all__ = [
     "expand_task_tool",
     "add_dependency_tool",
     "remove_dependency_tool",
-    "validate_dependencies_tool"
+    "validate_dependencies_tool",
 ]

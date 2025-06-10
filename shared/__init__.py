@@ -14,7 +14,7 @@ __all__ = [
     "schemas",
     # Core models
     "Task",
-    "SubTask", 
+    "SubTask",
     "TaskStatus",
     "TaskPriority",
     # MCP Request models

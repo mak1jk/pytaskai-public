@@ -14,25 +14,25 @@ def create_lts_research_prompt(
     project_type: str = "web application",
     target_environment: str = "production",
     current_versions: Optional[Dict[str, str]] = None,
-    constraints: Optional[List[str]] = None
+    constraints: Optional[List[str]] = None,
 ) -> str:
     """
     Generate a research prompt for LTS version recommendations.
-    
+
     Args:
         technology_stack: List of technologies to research (e.g., ["Python", "FastAPI", "PostgreSQL"])
         project_type: Type of project (e.g., "web application", "API service", "desktop app")
         target_environment: Target deployment environment (e.g., "production", "enterprise", "cloud")
         current_versions: Current versions being used, if any
         constraints: Any specific constraints or requirements
-        
+
     Returns:
         Formatted research prompt for LTS version analysis
     """
-    
+
     current_versions = current_versions or {}
     constraints = constraints or []
-    
+
     prompt_parts = [
         "# LTS Technology Research Request",
         "",
@@ -42,184 +42,187 @@ def create_lts_research_prompt(
         f"Research and recommend LTS (Long Term Support) versions for a {project_type} targeting {target_environment} deployment.",
         "",
         "## Technology Stack to Research",
-        ""
+        "",
     ]
-    
+
     # Add technology stack details
     for i, tech in enumerate(technology_stack, 1):
         current_version = current_versions.get(tech, "Unknown")
         prompt_parts.append(f"{i}. **{tech}** (current: {current_version})")
-    
+
     prompt_parts.append("")
-    
+
     # Add current state context
     if current_versions:
-        prompt_parts.extend([
-            "## Current State",
-            "The project currently uses these versions:",
-            ""
-        ])
-        
+        prompt_parts.extend(
+            ["## Current State", "The project currently uses these versions:", ""]
+        )
+
         for tech, version in current_versions.items():
             prompt_parts.append(f"- {tech}: {version}")
-        
+
         prompt_parts.append("")
-    
+
     # Add constraints if provided
     if constraints:
-        prompt_parts.extend([
-            "## Constraints and Requirements",
-            ""
-        ])
-        
+        prompt_parts.extend(["## Constraints and Requirements", ""])
+
         for constraint in constraints:
             prompt_parts.append(f"- {constraint}")
-        
+
         prompt_parts.append("")
-    
+
     # Add research requirements
-    prompt_parts.extend([
-        "## Research Requirements",
-        "",
-        "For each technology, provide:",
-        "",
-        "### 1. LTS Version Analysis",
-        "- Current LTS version and release date",
-        "- Support timeline and end-of-life dates",
-        "- Key features and improvements in LTS version",
-        "- Known stability issues or considerations",
-        "",
-        "### 2. Compatibility Assessment", 
-        "- Compatibility with other technologies in the stack",
-        "- Breaking changes from current version (if applicable)",
-        "- Migration complexity and effort estimation",
-        "- Dependency chain considerations",
-        "",
-        "### 3. Security and Maintenance",
-        "- Security update frequency and track record",
-        "- Community support and enterprise backing",
-        "- Critical security patches available",
-        "- Maintenance burden and operational considerations",
-        "",
-        "### 4. Performance and Features",
-        "- Performance characteristics vs. newer versions",
-        "- Feature completeness for project requirements",
-        "- Known performance optimizations or regressions",
-        "- Resource usage considerations",
-        "",
-        "### 5. Ecosystem Maturity",
-        "- Third-party library support for LTS version",
-        "- Documentation quality and completeness",
-        "- Tooling and development environment support",
-        "- Cloud provider and hosting platform support",
-        ""
-    ])
-    
+    prompt_parts.extend(
+        [
+            "## Research Requirements",
+            "",
+            "For each technology, provide:",
+            "",
+            "### 1. LTS Version Analysis",
+            "- Current LTS version and release date",
+            "- Support timeline and end-of-life dates",
+            "- Key features and improvements in LTS version",
+            "- Known stability issues or considerations",
+            "",
+            "### 2. Compatibility Assessment",
+            "- Compatibility with other technologies in the stack",
+            "- Breaking changes from current version (if applicable)",
+            "- Migration complexity and effort estimation",
+            "- Dependency chain considerations",
+            "",
+            "### 3. Security and Maintenance",
+            "- Security update frequency and track record",
+            "- Community support and enterprise backing",
+            "- Critical security patches available",
+            "- Maintenance burden and operational considerations",
+            "",
+            "### 4. Performance and Features",
+            "- Performance characteristics vs. newer versions",
+            "- Feature completeness for project requirements",
+            "- Known performance optimizations or regressions",
+            "- Resource usage considerations",
+            "",
+            "### 5. Ecosystem Maturity",
+            "- Third-party library support for LTS version",
+            "- Documentation quality and completeness",
+            "- Tooling and development environment support",
+            "- Cloud provider and hosting platform support",
+            "",
+        ]
+    )
+
     # Add specific guidance for enterprise/production environments
     if target_environment in ["production", "enterprise"]:
-        prompt_parts.extend([
-            "## Enterprise/Production Considerations",
-            "",
-            "Pay special attention to:",
-            "- Vendor support availability and cost",
-            "- Compliance and certification requirements",
-            "- High availability and disaster recovery features",
-            "- Monitoring and observability capabilities",
-            "- Scalability characteristics and limitations",
-            "- Integration with enterprise infrastructure",
-            ""
-        ])
-    
+        prompt_parts.extend(
+            [
+                "## Enterprise/Production Considerations",
+                "",
+                "Pay special attention to:",
+                "- Vendor support availability and cost",
+                "- Compliance and certification requirements",
+                "- High availability and disaster recovery features",
+                "- Monitoring and observability capabilities",
+                "- Scalability characteristics and limitations",
+                "- Integration with enterprise infrastructure",
+                "",
+            ]
+        )
+
     # Add research methodology
-    prompt_parts.extend([
-        "## Research Methodology",
-        "",
-        "Base your analysis on:",
-        "- Official project documentation and roadmaps",
-        "- Version release notes and changelogs",
-        "- Security advisory databases",
-        "- Community feedback and production usage reports",
-        "- Enterprise adoption patterns",
-        "- Benchmark data and performance studies",
-        "",
-        "## Output Format",
-        "",
-        "Provide your research findings as a structured analysis:",
-        "",
-        "```json",
-        "{",
-        '  "research_summary": "Executive summary of findings and recommendations",',
-        '  "technologies": [',
-        "    {",
-        '      "name": "Technology Name",',
-        '      "current_lts_version": "x.x.x",',
-        '      "recommended_version": "x.x.x",',
-        '      "support_until": "YYYY-MM-DD",',
-        '      "migration_complexity": "Low|Medium|High",',
-        '      "recommendation": "Upgrade|Stay|Evaluate",',
-        '      "key_benefits": ["benefit1", "benefit2"],',
-        '      "risks": ["risk1", "risk2"],',
-        '      "migration_notes": "Specific migration considerations"',
-        "    }",
-        "  ],",
-        '  "stack_compatibility": {',
-        '    "overall_rating": "Excellent|Good|Fair|Poor",',
-        '    "compatibility_issues": ["issue1", "issue2"],',
-        '    "integration_considerations": ["consideration1", "consideration2"]',
-        "  },",
-        '  "implementation_timeline": {',
-        '    "estimated_effort_days": 10,',
-        '    "phases": ["phase1", "phase2", "phase3"],',
-        '    "critical_dependencies": ["dep1", "dep2"]',
-        "  },",
-        '  "maintenance_plan": {',
-        '    "update_frequency": "Monthly|Quarterly|Biannual",',
-        '    "monitoring_requirements": ["req1", "req2"],',
-        '    "backup_strategy": "Recommended backup approach"',
-        "  }",
-        "}",
-        "```",
-        ""
-    ])
-    
+    prompt_parts.extend(
+        [
+            "## Research Methodology",
+            "",
+            "Base your analysis on:",
+            "- Official project documentation and roadmaps",
+            "- Version release notes and changelogs",
+            "- Security advisory databases",
+            "- Community feedback and production usage reports",
+            "- Enterprise adoption patterns",
+            "- Benchmark data and performance studies",
+            "",
+            "## Output Format",
+            "",
+            "Provide your research findings as a structured analysis:",
+            "",
+            "```json",
+            "{",
+            '  "research_summary": "Executive summary of findings and recommendations",',
+            '  "technologies": [',
+            "    {",
+            '      "name": "Technology Name",',
+            '      "current_lts_version": "x.x.x",',
+            '      "recommended_version": "x.x.x",',
+            '      "support_until": "YYYY-MM-DD",',
+            '      "migration_complexity": "Low|Medium|High",',
+            '      "recommendation": "Upgrade|Stay|Evaluate",',
+            '      "key_benefits": ["benefit1", "benefit2"],',
+            '      "risks": ["risk1", "risk2"],',
+            '      "migration_notes": "Specific migration considerations"',
+            "    }",
+            "  ],",
+            '  "stack_compatibility": {',
+            '    "overall_rating": "Excellent|Good|Fair|Poor",',
+            '    "compatibility_issues": ["issue1", "issue2"],',
+            '    "integration_considerations": ["consideration1", "consideration2"]',
+            "  },",
+            '  "implementation_timeline": {',
+            '    "estimated_effort_days": 10,',
+            '    "phases": ["phase1", "phase2", "phase3"],',
+            '    "critical_dependencies": ["dep1", "dep2"]',
+            "  },",
+            '  "maintenance_plan": {',
+            '    "update_frequency": "Monthly|Quarterly|Biannual",',
+            '    "monitoring_requirements": ["req1", "req2"],',
+            '    "backup_strategy": "Recommended backup approach"',
+            "  }",
+            "}",
+            "```",
+            "",
+        ]
+    )
+
     # Add quality guidelines
-    prompt_parts.extend([
-        "## Quality Guidelines",
-        "",
-        "Ensure your research is:",
-        "- Based on current and authoritative sources",
-        "- Balanced between stability and functionality",
-        "- Practical for the specified project type and environment",
-        "- Considers long-term maintenance and support",
-        "- Includes concrete next steps and recommendations",
-        "",
-        f"**Research conducted on:** {datetime.now().isoformat()}",
-        f"**Target environment:** {target_environment}",
-        f"**Project type:** {project_type}"
-    ])
-    
+    prompt_parts.extend(
+        [
+            "## Quality Guidelines",
+            "",
+            "Ensure your research is:",
+            "- Based on current and authoritative sources",
+            "- Balanced between stability and functionality",
+            "- Practical for the specified project type and environment",
+            "- Considers long-term maintenance and support",
+            "- Includes concrete next steps and recommendations",
+            "",
+            f"**Research conducted on:** {datetime.now().isoformat()}",
+            f"**Target environment:** {target_environment}",
+            f"**Project type:** {project_type}",
+        ]
+    )
+
     return "\\n".join(prompt_parts)
 
 
 def create_dependency_research_prompt(
     primary_technology: str,
     required_features: List[str],
-    compatibility_constraints: Optional[List[str]] = None
+    compatibility_constraints: Optional[List[str]] = None,
 ) -> str:
     """
     Generate a research prompt for dependency and library recommendations.
-    
+
     Args:
         primary_technology: Main technology (e.g., "Python", "Node.js")
         required_features: List of required features or capabilities
         compatibility_constraints: Version or compatibility constraints
-        
+
     Returns:
         Formatted research prompt for dependency analysis
     """
-    
+
     compatibility_constraints = compatibility_constraints or []
-    
+
     prompt = f"""# Dependency Research for {primary_technology}
 
 Research and recommend stable, well-maintained dependencies for:
@@ -247,29 +250,26 @@ Prioritize libraries with:
 - Strong security practices
 
 Provide recommendations in order of preference with rationale."""
-    
+
     return prompt
 
 
 def create_migration_research_prompt(
-    from_version: str,
-    to_version: str,
-    technology: str,
-    project_size: str = "medium"
+    from_version: str, to_version: str, technology: str, project_size: str = "medium"
 ) -> str:
     """
     Generate a research prompt for version migration planning.
-    
+
     Args:
         from_version: Current version
         to_version: Target version
         technology: Technology being migrated
         project_size: Size of project (small, medium, large, enterprise)
-        
+
     Returns:
         Formatted research prompt for migration analysis
     """
-    
+
     return f"""# Migration Research: {technology} {from_version} → {to_version}
 
 ## Migration Analysis Request
@@ -308,25 +308,27 @@ Provide a comprehensive migration plan with:
 Focus on practical, actionable guidance for a {project_size} development team."""
 
 
-def validate_lts_research_response(response_data: Dict[str, Any]) -> tuple[bool, List[str]]:
+def validate_lts_research_response(
+    response_data: Dict[str, Any]
+) -> tuple[bool, List[str]]:
     """
     Validate the AI response for LTS research prompt.
-    
+
     Args:
         response_data: The AI's JSON response
-        
+
     Returns:
         Tuple of (is_valid, list_of_errors)
     """
-    
+
     errors = []
     required_fields = ["research_summary", "technologies", "stack_compatibility"]
-    
+
     # Check required top-level fields
     for field in required_fields:
         if field not in response_data:
             errors.append(f"Missing required field: {field}")
-    
+
     # Validate technologies array
     if "technologies" in response_data:
         if not isinstance(response_data["technologies"], list):
@@ -336,12 +338,19 @@ def validate_lts_research_response(response_data: Dict[str, Any]) -> tuple[bool,
                 if not isinstance(tech, dict):
                     errors.append(f"Technology {i} must be an object")
                     continue
-                
-                required_tech_fields = ["name", "current_lts_version", "recommended_version", "recommendation"]
+
+                required_tech_fields = [
+                    "name",
+                    "current_lts_version",
+                    "recommended_version",
+                    "recommendation",
+                ]
                 for tech_field in required_tech_fields:
                     if tech_field not in tech:
-                        errors.append(f"Technology {i} missing required field: {tech_field}")
-    
+                        errors.append(
+                            f"Technology {i} missing required field: {tech_field}"
+                        )
+
     # Validate stack compatibility
     if "stack_compatibility" in response_data:
         compat = response_data["stack_compatibility"]
@@ -349,14 +358,14 @@ def validate_lts_research_response(response_data: Dict[str, Any]) -> tuple[bool,
             errors.append("Stack compatibility must be an object")
         elif "overall_rating" not in compat:
             errors.append("Stack compatibility missing overall_rating")
-    
+
     return len(errors) == 0, errors
 
 
 def get_lts_research_system_prompt() -> str:
     """
     Get the system prompt for LTS research operations.
-    
+
     Returns:
         System prompt for LTS version research
     """
@@ -380,85 +389,85 @@ When conducting LTS research:
 Always provide structured, actionable recommendations based on current industry standards and proven practices."""
 
 
-def get_lts_research_user_prompt(technologies: List[str], additional_context: str = "") -> str:
+def get_lts_research_user_prompt(
+    technologies: List[str], additional_context: str = ""
+) -> str:
     """
     Generate user prompt for LTS research on specific technologies.
-    
+
     Args:
         technologies: List of technologies to research
         additional_context: Additional context or constraints
-        
+
     Returns:
         Formatted user prompt for LTS research
     """
-    
+
     prompt_parts = [
         "# LTS Version Research Request",
         "",
         "Please research the current LTS (Long Term Support) versions for the following technologies:",
-        ""
+        "",
     ]
-    
+
     # Add technologies list
     for i, tech in enumerate(technologies, 1):
         prompt_parts.append(f"{i}. **{tech}**")
-    
+
     prompt_parts.append("")
-    
+
     # Add additional context if provided
     if additional_context:
-        prompt_parts.extend([
-            "## Additional Context",
-            additional_context,
-            ""
-        ])
-    
+        prompt_parts.extend(["## Additional Context", additional_context, ""])
+
     # Add research requirements
-    prompt_parts.extend([
-        "## Research Requirements",
-        "",
-        "For each technology, provide:",
-        "",
-        "### Current LTS Status",
-        "- Current LTS version number and release date",
-        "- Support timeline and end-of-life dates",
-        "- Maintenance and security update schedule",
-        "",
-        "### Stability Assessment",
-        "- Known stability issues or considerations",
-        "- Production readiness and enterprise adoption",
-        "- Performance characteristics vs newer versions",
-        "",
-        "### Ecosystem Compatibility",
-        "- Compatibility with other technologies in the list",
-        "- Third-party library and tool support",
-        "- Cloud provider and hosting platform support",
-        "",
-        "### Recommendation",
-        "- Whether to use LTS version or consider alternatives",
-        "- Migration strategy if upgrade is needed",
-        "- Risk assessment and mitigation strategies",
-        "",
-        "## Output Format",
-        "Provide your research as a structured JSON response with detailed analysis for each technology.",
-        f"**Research timestamp:** {datetime.now().isoformat()}"
-    ])
-    
+    prompt_parts.extend(
+        [
+            "## Research Requirements",
+            "",
+            "For each technology, provide:",
+            "",
+            "### Current LTS Status",
+            "- Current LTS version number and release date",
+            "- Support timeline and end-of-life dates",
+            "- Maintenance and security update schedule",
+            "",
+            "### Stability Assessment",
+            "- Known stability issues or considerations",
+            "- Production readiness and enterprise adoption",
+            "- Performance characteristics vs newer versions",
+            "",
+            "### Ecosystem Compatibility",
+            "- Compatibility with other technologies in the list",
+            "- Third-party library and tool support",
+            "- Cloud provider and hosting platform support",
+            "",
+            "### Recommendation",
+            "- Whether to use LTS version or consider alternatives",
+            "- Migration strategy if upgrade is needed",
+            "- Risk assessment and mitigation strategies",
+            "",
+            "## Output Format",
+            "Provide your research as a structured JSON response with detailed analysis for each technology.",
+            f"**Research timestamp:** {datetime.now().isoformat()}",
+        ]
+    )
+
     return "\\n".join(prompt_parts)
 
 
 def get_lts_compatibility_prompt(primary_tech: str, dependencies: List[str]) -> str:
     """
     Generate prompt for LTS compatibility analysis between technologies.
-    
+
     Args:
         primary_tech: Primary technology to focus on
         dependencies: List of dependent technologies
-        
+
     Returns:
         Formatted compatibility analysis prompt
     """
-    
+
     return f"""# LTS Compatibility Analysis
 
 ## Primary Technology
@@ -496,10 +505,10 @@ Provide structured recommendations prioritizing stability and long-term maintena
 # Export functions for use in AI service
 __all__ = [
     "create_lts_research_prompt",
-    "create_dependency_research_prompt", 
+    "create_dependency_research_prompt",
     "create_migration_research_prompt",
     "validate_lts_research_response",
     "get_lts_research_system_prompt",
     "get_lts_research_user_prompt",
-    "get_lts_compatibility_prompt"
+    "get_lts_compatibility_prompt",
 ]

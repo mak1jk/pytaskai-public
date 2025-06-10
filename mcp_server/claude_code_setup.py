@@ -16,54 +16,65 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
 def generate_mcp_tool_instructions(mcp_instance) -> str:
     """
     Analizza tutti i tool registrati e genera istruzioni dettagliate per Claude Code.
-    
+
     Args:
         mcp_instance: Istanza FastMCP con tool registrati
-        
+
     Returns:
         Stringa contenente istruzioni formattate per Claude Code
     """
     try:
         # Get registered tools from FastMCP instance
         tools = []
-        
+
         # Try to access _registered_tools attribute or similar
-        if hasattr(mcp_instance, '_tools'):
+        if hasattr(mcp_instance, "_tools"):
             tools = mcp_instance._tools
-        elif hasattr(mcp_instance, '_registered_tools'):
+        elif hasattr(mcp_instance, "_registered_tools"):
             tools = mcp_instance._registered_tools
-        elif hasattr(mcp_instance, 'tools'):
+        elif hasattr(mcp_instance, "tools"):
             tools = mcp_instance.tools
-        
+
         if not tools:
             logger.warning("No tools found in MCP instance")
             return "# No MCP tools registered\n"
-        
+
         instructions = []
         instructions.append("# PyTaskAI MCP Tools Reference\n")
-        instructions.append("The following MCP tools are available for task management:\n")
-        
+        instructions.append(
+            "The following MCP tools are available for task management:\n"
+        )
+
         for tool_name, tool_func in tools.items():
             instructions.append(f"## {tool_name}\n")
-            
+
             # Get function docstring
             doc = inspect.getdoc(tool_func) or "No description available"
             instructions.append(f"**Description:** {doc.split('.')[0]}.\n")
-            
+
             # Get function signature
             sig = inspect.signature(tool_func)
-            
+
             instructions.append("**Parameters:**")
             for param_name, param in sig.parameters.items():
-                param_type = param.annotation if param.annotation != inspect.Parameter.empty else "Any"
-                default = param.default if param.default != inspect.Parameter.empty else "Required"
+                param_type = (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else "Any"
+                )
+                default = (
+                    param.default
+                    if param.default != inspect.Parameter.empty
+                    else "Required"
+                )
                 instructions.append(f"- `{param_name}` ({param_type}): {default}")
-            
+
             instructions.append("")
-            
+
             # Add usage example
             instructions.append("**Example Usage:**")
             instructions.append(f"```python")
@@ -78,13 +89,13 @@ def generate_mcp_tool_instructions(mcp_instance) -> str:
                     param_examples.append(f'{param_name}="in-progress"')
                 else:
                     param_examples.append(f'{param_name}="value"')
-            
+
             example_call = f"{tool_name}({', '.join(param_examples)})"
             instructions.append(example_call)
             instructions.append("```\n")
-        
+
         return "\n".join(instructions)
-        
+
     except Exception as e:
         logger.error(f"Error generating MCP tool instructions: {e}")
         return f"# Error generating MCP tool instructions\n# {str(e)}\n"
@@ -247,59 +258,65 @@ This project provides MCP tools for task management. Always use the project_root
 """
 
 
-def init_claude_support(mcp_instance, project_root: str, include_windsurfrules: bool = True) -> Dict[str, Any]:
+def init_claude_support(
+    mcp_instance, project_root: str, include_windsurfrules: bool = True
+) -> Dict[str, Any]:
     """
     Inizializza il supporto Claude Code creando file .cursor/rules e .windsurfrules.
-    
+
     Args:
         mcp_instance: Istanza FastMCP con tool registrati
         project_root: Path assoluto alla directory del progetto
         include_windsurfrules: Se generare anche .windsurfrules
-        
+
     Returns:
         Dict con risultati dell'operazione
     """
     try:
         logger.info(f"Initializing Claude Code support for project: {project_root}")
-        
+
         # Create .cursor/rules directory
         cursor_rules_dir = os.path.join(project_root, ".cursor", "rules")
         os.makedirs(cursor_rules_dir, exist_ok=True)
-        
+
         # Generate MCP tool instructions
         mcp_tools_instructions = generate_mcp_tool_instructions(mcp_instance)
-        
+
         # Create template files
         templates = {
             "dev_workflow.mdc": create_dev_workflow_template(),
             "self_improve.mdc": create_self_improve_template(),
-            "project_specific_rules.mdc": create_project_specific_template(mcp_tools_instructions)
+            "project_specific_rules.mdc": create_project_specific_template(
+                mcp_tools_instructions
+            ),
         }
-        
+
         created_files = []
-        
+
         # Write .mdc files
         for filename, content in templates.items():
             file_path = os.path.join(cursor_rules_dir, filename)
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
             created_files.append(file_path)
             logger.info(f"Created: {file_path}")
-        
+
         # Include existing CLAUDE.md content if available
         claude_md_path = os.path.join(project_root, "CLAUDE.md")
         if os.path.exists(claude_md_path):
-            with open(claude_md_path, 'r', encoding='utf-8') as f:
+            with open(claude_md_path, "r", encoding="utf-8") as f:
                 claude_content = f.read()
-            
+
             # Append to project_specific_rules.mdc
-            project_rules_path = os.path.join(cursor_rules_dir, "project_specific_rules.mdc")
-            with open(project_rules_path, 'a', encoding='utf-8') as f:
+            project_rules_path = os.path.join(
+                cursor_rules_dir, "project_specific_rules.mdc"
+            )
+            with open(project_rules_path, "a", encoding="utf-8") as f:
                 f.write("\\n\\n## Existing CLAUDE.md Content\\n")
                 f.write(claude_content)
-            
+
             logger.info("Incorporated existing CLAUDE.md content")
-        
+
         # Generate .windsurfrules if requested
         windsurfrules_path = None
         if include_windsurfrules:
@@ -307,12 +324,16 @@ def init_claude_support(mcp_instance, project_root: str, include_windsurfrules: 
             windsurfrules_content.append("# PyTaskAI - Claude Code Integration Rules")
             windsurfrules_content.append(f"# Generated on {datetime.now().isoformat()}")
             windsurfrules_content.append("")
-            
-            for filename in ["dev_workflow.mdc", "self_improve.mdc", "project_specific_rules.mdc"]:
+
+            for filename in [
+                "dev_workflow.mdc",
+                "self_improve.mdc",
+                "project_specific_rules.mdc",
+            ]:
                 file_path = os.path.join(cursor_rules_dir, filename)
                 if os.path.exists(file_path):
                     windsurfrules_content.append(f"## === {filename} ===")
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read()
                         # Remove YAML front matter for .windsurfrules
                         if content.startswith("---"):
@@ -323,60 +344,66 @@ def init_claude_support(mcp_instance, project_root: str, include_windsurfrules: 
                                     yaml_end = i
                                     break
                             if yaml_end > 0:
-                                content = "\\n".join(lines[yaml_end + 1:])
+                                content = "\\n".join(lines[yaml_end + 1 :])
                         windsurfrules_content.append(content)
                     windsurfrules_content.append("")
-            
+
             windsurfrules_path = os.path.join(project_root, ".windsurfrules")
-            with open(windsurfrules_path, 'w', encoding='utf-8') as f:
+            with open(windsurfrules_path, "w", encoding="utf-8") as f:
                 f.write("\\n".join(windsurfrules_content))
             created_files.append(windsurfrules_path)
             logger.info(f"Created: {windsurfrules_path}")
-        
+
         result = {
             "success": True,
             "created_files": created_files,
             "cursor_rules_dir": cursor_rules_dir,
             "mcp_tools_count": len(mcp_tools_instructions.split("##")) - 1,
-            "project_root": project_root
+            "project_root": project_root,
         }
-        
+
         logger.info(f"Claude Code support initialization completed successfully")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error initializing Claude Code support: {e}")
         return {
             "success": False,
             "error": str(e),
             "created_files": [],
-            "project_root": project_root
+            "project_root": project_root,
         }
 
 
 def main():
     """CLI command for init-claude functionality"""
-    parser = argparse.ArgumentParser(description="Initialize Claude Code support for PyTaskAI")
-    parser.add_argument("--project-root", default="/workspace", help="Project root directory")
-    parser.add_argument("--no-windsurfrules", action="store_true", help="Skip .windsurfrules generation")
+    parser = argparse.ArgumentParser(
+        description="Initialize Claude Code support for PyTaskAI"
+    )
+    parser.add_argument(
+        "--project-root", default="/workspace", help="Project root directory"
+    )
+    parser.add_argument(
+        "--no-windsurfrules", action="store_true", help="Skip .windsurfrules generation"
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
-    
+
     args = parser.parse_args()
-    
+
     # Configure logging
     log_level = logging.INFO if args.verbose else logging.WARNING
-    logging.basicConfig(level=log_level, format='%(levelname)s: %(message)s')
-    
+    logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
+
     try:
         # Import and initialize MCP instance for tool introspection
         from .task_manager import mcp
-        
+
         result = init_claude_support(
             mcp_instance=mcp,
             project_root=args.project_root,
-            include_windsurfrules=not args.no_windsurfrules
+            include_windsurfrules=not args.no_windsurfrules,
         )
-        
+
         if result["success"]:
             print("✅ Claude Code support initialized successfully!")
             print(f"📁 Files created in: {result['cursor_rules_dir']}")
@@ -387,11 +414,11 @@ def main():
         else:
             print(f"❌ Failed to initialize Claude Code support: {result['error']}")
             return 1
-            
+
     except Exception as e:
         print(f"❌ Error: {e}")
         return 1
-    
+
     return 0
 
 

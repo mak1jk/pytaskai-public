@@ -14,7 +14,7 @@ __email__ = "info@pytaskai.com"
 
 __all__ = [
     "task_manager",
-    "ai_service", 
+    "ai_service",
     "prompts",
     "utils",
 ]

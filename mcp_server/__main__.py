@@ -11,11 +11,11 @@ from .task_manager import mcp
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
+
 
 def main():
     """Main entry point for the MCP server"""
@@ -29,6 +29,7 @@ def main():
     except Exception as e:
         logger.error(f"Failed to start MCP server: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
