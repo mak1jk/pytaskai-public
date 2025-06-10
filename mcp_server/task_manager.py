@@ -346,7 +346,7 @@ def init_claude_support_tool(
 
 
 @mcp.tool()
-def parse_prd_tool(
+async def parse_prd_tool(
     project_root: str,
     prd_content: str,
     target_tasks_count: int = 10,
@@ -388,7 +388,7 @@ def parse_prd_tool(
         
         # Initialize AI Service
         from .ai_service import AIService
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Prepare prompt for task generation from PRD
         generation_prompt = f"""
@@ -421,13 +421,12 @@ Rispondi SOLO con JSON valido contenente array di task.
         
         # Generate tasks using AI
         logger.info("Generating tasks from PRD using AI Service")
-        import asyncio
-        generation_result = asyncio.run(ai_service.generate_task_with_ai(
+        generation_result = await ai_service.generate_task_with_ai(
             user_prompt=generation_prompt,
             use_research=use_research,
             use_lts_deps=use_lts_deps,
             project_context=f"PRD parsing for {target_tasks_count} tasks"
-        ))
+        )
         
         # Extract tasks from AI response
         if "error" in generation_result:
@@ -558,7 +557,7 @@ def get_cache_metrics_tool(
         
         # Initialize AI Service to get cache manager
         from .ai_service import AIService
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Get base metrics
         metrics = ai_service.get_cache_metrics()
@@ -639,7 +638,7 @@ def clear_cache_tool(
         from .ai_service import AIService
         from .cache_manager import CacheType
         
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Map string to CacheType enum
         cache_type_enum = None
@@ -712,7 +711,7 @@ def check_rate_limits_tool(
         
         # Initialize AI Service to get cache manager
         from .ai_service import AIService
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Get current metrics
         metrics = ai_service.get_cache_metrics()
@@ -848,7 +847,7 @@ def get_usage_stats_tool(
         # Initialize AI Service to get usage tracker
         from .ai_service import AIService
         from dataclasses import asdict
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Parse dates if provided
         kwargs = {}
@@ -947,7 +946,7 @@ def check_budget_status_tool(
         
         # Initialize AI Service to get usage tracker
         from .ai_service import AIService
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Get budget status
         budget_status = ai_service.get_budget_status()
@@ -1165,7 +1164,7 @@ def set_task_status_tool(
 
 
 @mcp.tool()
-def add_task_tool(
+async def add_task_tool(
     project_root: str,
     prompt: str,
     use_research: bool = False,
@@ -1190,6 +1189,15 @@ def add_task_tool(
         Dict contenente il task creato e metadati dell'operazione
     """
     try:
+        # Validate project_root parameter
+        if not project_root or project_root == "":
+            project_root = "."
+        
+        # Ensure project_root is absolute and valid
+        import os
+        if not os.path.isabs(project_root):
+            project_root = os.path.abspath(project_root)
+        
         logger.info(f"Creating new task for project: {project_root}")
         logger.info(f"Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
         logger.info(f"Research: {use_research}, LTS: {use_lts_deps}, Priority: {priority}")
@@ -1203,9 +1211,23 @@ def add_task_tool(
             }
         
         # Load existing tasks to determine next ID
-        data = load_tasks(project_root)
-        if not data:
+        existing_task_objects = load_tasks(project_root)
+        
+        # Convert Task objects to dict format for processing
+        if existing_task_objects:
+            existing_tasks = [task.dict() for task in existing_task_objects]
+            data = {
+                "version": "1.0",
+                "tasks": existing_tasks,
+                "metadata": {
+                    "generator": "PyTaskAI",
+                    "last_updated": datetime.now().isoformat(),
+                    "total_tasks": len(existing_tasks)
+                }
+            }
+        else:
             # Initialize empty tasks structure
+            existing_tasks = []
             data = {
                 "version": "1.0",
                 "tasks": [],
@@ -1214,8 +1236,6 @@ def add_task_tool(
                     "created_at": datetime.now().isoformat()
                 }
             }
-        
-        existing_tasks = data.get("tasks", [])
         
         # Determine next task ID
         if target_task_id:
@@ -1292,20 +1312,19 @@ def add_task_tool(
         
         # Initialize AI Service
         from .ai_service import AIService
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Generate task using AI
         logger.info("Generating task with AI Service")
-        import asyncio
         
-        generation_result = asyncio.run(ai_service.generate_task_with_ai(
+        generation_result = await ai_service.generate_task_with_ai(
             user_prompt=prompt,
             use_research=use_research,
             use_lts_deps=use_lts_deps,
             mentioned_technologies=mentioned_technologies,
             topic_for_best_practices=topic_for_best_practices,
             project_context=f"Adding task to project with {len(existing_tasks)} existing tasks"
-        ))
+        )
         
         # Check for AI generation errors
         if "error" in generation_result:
@@ -1386,7 +1405,18 @@ def add_task_tool(
         
         # Save updated tasks
         try:
-            save_tasks(project_root, data)
+            # Convert dict tasks to Task objects for save_tasks function
+            task_objects = []
+            for task_dict in data["tasks"]:
+                # Add missing fields with defaults if needed
+                if "subtasks" not in task_dict:
+                    task_dict["subtasks"] = []
+                # Create Task object - this will handle validation
+                from shared.models import Task
+                task_obj = Task(**task_dict)
+                task_objects.append(task_obj)
+            
+            save_tasks(task_objects, project_root)
             logger.info(f"Successfully created task {next_id}: {new_task['title']}")
         except Exception as save_error:
             logger.error(f"Failed to save new task: {save_error}")
@@ -1436,7 +1466,7 @@ def add_task_tool(
 
 
 @mcp.tool()
-def expand_task_tool(
+async def expand_task_tool(
     project_root: str,
     task_id: Union[int, str],
     use_research: bool = False,
@@ -1545,15 +1575,13 @@ def expand_task_tool(
         
         # Initialize AI Service
         from .ai_service import AIService
-        ai_service = AIService()
+        ai_service = AIService(project_root=project_root)
         
         # Generate subtasks using AI
         logger.info("Generating subtasks with AI Service")
-        import asyncio
-        
         # Check if method exists, if not create a wrapper
         if hasattr(ai_service, 'generate_subtasks_with_ai'):
-            generation_result = asyncio.run(ai_service.generate_subtasks_with_ai(
+            generation_result = await ai_service.generate_subtasks_with_ai(
                 task_content=task_content,
                 target_subtasks_count=target_subtasks_count,
                 use_research=use_research,
@@ -1561,7 +1589,7 @@ def expand_task_tool(
                 mentioned_technologies=mentioned_technologies,
                 topic_for_best_practices=topic_for_best_practices,
                 additional_context=additional_context
-            ))
+            )
         else:
             # Fallback: use generate_task_with_ai with modified prompt
             subtask_prompt = f"""
@@ -1597,14 +1625,14 @@ Genera un array JSON di subtask, ognuno con:
 Rispondi SOLO con JSON valido contenente array di subtask.
             """
             
-            generation_result = asyncio.run(ai_service.generate_task_with_ai(
+            generation_result = await ai_service.generate_task_with_ai(
                 user_prompt=subtask_prompt,
                 use_research=use_research,
                 use_lts_deps=use_lts_deps,
                 mentioned_technologies=mentioned_technologies,
                 topic_for_best_practices=topic_for_best_practices,
                 project_context=f"Expanding task {task_id} into {target_subtasks_count} subtasks"
-            ))
+            )
         
         # Check for AI generation errors
         if "error" in generation_result:

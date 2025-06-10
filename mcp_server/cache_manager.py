@@ -80,7 +80,7 @@ class CacheManager:
     Intelligent cache manager with TTL, rate limiting, and metrics.
     """
     
-    def __init__(self):
+    def __init__(self, project_root: Optional[str] = None):
         """Initialize cache manager with configuration."""
         self.cache: Dict[str, CacheEntry] = {}
         self.rate_limits: Dict[str, RateLimitInfo] = {}
@@ -89,6 +89,10 @@ class CacheManager:
         # Configuration from environment
         self.ttl_config = self._load_ttl_config()
         self.rate_limit_config = self._load_rate_limit_config()
+        self.project_root = project_root or os.getcwd()
+        self.cache_dir = os.path.join(self.project_root, ".pytaskai", "cache")
+        os.makedirs(self.cache_dir, exist_ok=True)
+
         self.max_cache_size = int(os.getenv("PYTASKAI_MAX_CACHE_SIZE", "1000"))
         self.cleanup_interval = int(os.getenv("PYTASKAI_CACHE_CLEANUP_INTERVAL", "300"))  # 5 minutes
         
@@ -564,15 +568,20 @@ class CacheManager:
         self.rate_limits.clear()
         logger.info("CacheManager shutdown complete")
 
-# Global cache manager instance
-_cache_manager = None
+# Global cache manager instances, one per project root
+_cache_managers: Dict[str, CacheManager] = {}
 
-def get_cache_manager() -> CacheManager:
-    """Get global cache manager instance."""
-    global _cache_manager
-    if _cache_manager is None:
-        _cache_manager = CacheManager()
-    return _cache_manager
+def get_cache_manager(project_root: Optional[str] = None) -> CacheManager:
+    """Get a cache manager instance for a specific project root."""
+    global _cache_managers
+    
+    # Use a default key for global/non-project-specific usage
+    key = project_root or "_global_"
+    
+    if key not in _cache_managers:
+        _cache_managers[key] = CacheManager(project_root)
+        
+    return _cache_managers[key]
 
 def shutdown_cache_manager():
     """Shutdown global cache manager."""

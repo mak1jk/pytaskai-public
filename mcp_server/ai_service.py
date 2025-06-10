@@ -18,70 +18,8 @@ from enum import Enum
 from .cache_manager import get_cache_manager, CacheType, RateLimitStatus
 from .usage_tracker import get_usage_tracker, OperationType, CallStatus, record_ai_usage
 
-# Mock litellm for development (will be replaced with actual import)
-class MockLiteLLM:
-    """Mock LiteLLM for development and testing"""
-    
-    @staticmethod
-    async def acompletion(model: str, messages: List[Dict], **kwargs):
-        """Mock async completion"""
-        # Simulate different responses based on model
-        if "perplexity" in model:
-            return MockResponse({
-                "choices": [{
-                    "message": {
-                        "content": json.dumps({
-                            "research_summary": f"Research results for {model}",
-                            "findings": ["Current LTS versions found", "Best practices identified"],
-                            "technologies_analyzed": ["Python", "FastAPI"],
-                            "confidence_level": "High"
-                        })
-                    }
-                }],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300}
-            })
-        else:
-            return MockResponse({
-                "choices": [{
-                    "message": {
-                        "content": json.dumps({
-                            "title": "Generated Task Title",
-                            "description": "AI-generated task description",
-                            "details": "Implementation details with research insights",
-                            "test_strategy": "Comprehensive testing approach",
-                            "estimated_hours": 8.0,
-                            "complexity_score": 6
-                        })
-                    }
-                }],
-                "usage": {"prompt_tokens": 150, "completion_tokens": 300, "total_tokens": 450}
-            })
 
-class MockResponse:
-    """Mock response from LiteLLM"""
-    def __init__(self, data):
-        self.choices = [MockChoice(choice) for choice in data["choices"]]
-        self.usage = MockUsage(data["usage"])
-
-class MockChoice:
-    def __init__(self, data):
-        self.message = MockMessage(data["message"])
-
-class MockMessage:
-    def __init__(self, data):
-        self.content = data["content"]
-
-class MockUsage:
-    def __init__(self, data):
-        self.prompt_tokens = data["prompt_tokens"]
-        self.completion_tokens = data["completion_tokens"]
-        self.total_tokens = data["total_tokens"]
-
-# Use mock for development
-try:
-    import litellm
-except ImportError:
-    litellm = MockLiteLLM()
+import litellm
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -160,19 +98,20 @@ class AIService:
     and seamless integration with multiple LLM providers through LiteLLM.
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, project_root: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
         """
         Initialize AIService with configuration.
         
         Args:
             config: Optional configuration dictionary
         """
+        self.project_root = project_root
         self.config = config or {}
         self.usage_metrics = AIUsageMetrics()
         
         # Initialize cache manager and usage tracker
-        self.cache_manager = get_cache_manager()
-        self.usage_tracker = get_usage_tracker()
+        self.cache_manager = get_cache_manager(project_root)
+        self.usage_tracker = get_usage_tracker(project_root)
         
         # Add compatibility aliases for tests
         self.cache = CacheCompatibilityWrapper(self.cache_manager)  # Alias for backward compatibility
@@ -305,6 +244,7 @@ class AIService:
         operation_type: OperationType = OperationType.GENERAL,
         operation_context: str = "",
         tool_name: Optional[str] = None,
+        error_message: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """

@@ -11,6 +11,7 @@ import logging
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field, asdict
+from .utils import get_usage_directory
 from enum import Enum
 import hashlib
 from pathlib import Path
@@ -122,7 +123,7 @@ class UsageTracker:
     def __init__(self, project_root: Optional[str] = None):
         """Initialize usage tracker."""
         self.project_root = project_root or os.getcwd()
-        self.usage_dir = os.path.join(self.project_root, ".taskmaster", "usage")
+        self.usage_dir = get_usage_directory(self.project_root)
         self.usage_file = os.path.join(self.usage_dir, "usage.json")
         
         # Ensure directory structure
@@ -675,15 +676,19 @@ class UsageTracker:
         
         return "Unknown"
 
-# Global usage tracker instance
-_usage_tracker = None
+# Global usage tracker instances, one per project root
+_usage_trackers: Dict[str, UsageTracker] = {}
 
 def get_usage_tracker(project_root: Optional[str] = None) -> UsageTracker:
-    """Get global usage tracker instance."""
-    global _usage_tracker
-    if _usage_tracker is None or (project_root and _usage_tracker.project_root != project_root):
-        _usage_tracker = UsageTracker(project_root)
-    return _usage_tracker
+    """Get a usage tracker instance for a specific project root."""
+    global _usage_trackers
+    
+    key = project_root or "_global_"
+    
+    if key not in _usage_trackers:
+        _usage_trackers[key] = UsageTracker(project_root)
+        
+    return _usage_trackers[key]
 
 def record_ai_usage(
     provider: str,
@@ -691,10 +696,11 @@ def record_ai_usage(
     operation_type: OperationType,
     operation_context: str,
     status: CallStatus,
+    project_root: Optional[str] = None,
     **kwargs
 ) -> None:
     """Convenience function to record AI usage."""
-    tracker = get_usage_tracker()
+    tracker = get_usage_tracker(project_root)
     tracker.record_usage(
         provider=provider,
         model=model,

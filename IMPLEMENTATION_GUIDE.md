@@ -523,6 +523,6 @@ def render_drag_drop_board():
    - Analytics board con charts
    - Quick actions per AI operations
 
-Questi task trasformano il tuo Task Master Python in una piattaforma completa e moderna che compete con strumenti enterprise come Jira, ma con l'AI intelligence integrata!
+Questi task trasformano il tuo pytaskai Python in una piattaforma completa e moderna che compete con strumenti enterprise come Jira, ma con l'AI intelligence integrata!
 
 Le implementazioni sono modulari e possono essere sviluppate incrementalmente. Il tracking dei costi è particolarmente importante per gestire i budget AI in progetti di produzione.
