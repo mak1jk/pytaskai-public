@@ -76,17 +76,28 @@ Aggiungi PyTaskAI al tuo MCP configuration file:
   "servers": {
     "pytaskai": {
       "command": "python",
-      "args": ["-m", "pytaskai.mcp_server"],
+      "args": ["-m", "mcp_server"],
+      "cwd": "/path/to/your/pytaskai-project",
       "env": {
         "OPENAI_API_KEY": "your-openai-key-here",
         "ANTHROPIC_API_KEY": "your-anthropic-key-here",
         "PERPLEXITY_API_KEY": "your-perplexity-key-here",
         "PYTASKAI_DEFAULT_MODEL": "gpt-4o-mini",
-        "PYTASKAI_RESEARCH_MODEL": "perplexity/llama-3.1-sonar-small-128k-online"
+        "PYTASKAI_RESEARCH_MODEL": "perplexity/llama-3.1-sonar-small-128k-online",
+        "PYTHONPATH": "/path/to/your/pytaskai-project"
       }
     }
   }
 }
+```
+
+**Oppure usa il comando Claude Code:**
+
+```bash
+claude mcp add pytaskai -s user -- python -m mcp_server \
+  --cwd "/path/to/your/pytaskai-project" \
+  --env PYTASKAI_DEFAULT_MODEL="your-preferred-model" \
+  PYTHONPATH="/path/to/your/pytaskai-project"
 ```
 
 Vedi [MCP_CONFIGURATION.md](MCP_CONFIGURATION.md) per configurazione completa.

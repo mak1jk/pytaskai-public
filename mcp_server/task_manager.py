@@ -12,7 +12,8 @@ from fastmcp import FastMCP
 
 from .utils import (
     load_tasks, save_tasks, validate_tasks_file, 
-    get_tasks_statistics, ensure_directories_exist
+    get_tasks_statistics, ensure_directories_exist,
+    get_reports_directory # PyTaskAI: Added for standardized report paths
 )
 
 # Configure logging
@@ -1953,7 +1954,7 @@ def analyze_complexity_tool(
         use_research: Se usare ricerca per context aggiuntivo
         complexity_threshold: Soglia per segnalare task complessi (1-10)
         save_report: Se salvare il report di complessità
-        report_path: Path custom per il report (default: .taskmaster/reports/complexity_report.json)
+        report_path: Path custom per il report (default: .pytaskai/reports/complexity_report.json)
         
     Returns:
         Dict contenente analisi di complessità e raccomandazioni
@@ -2243,7 +2244,7 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
             try:
                 # Determine report path
                 if not report_path:
-                    reports_dir = Path(project_root) / ".taskmaster" / "reports"
+                    reports_dir = get_reports_directory(project_root)  # PyTaskAI: Use standardized path
                     reports_dir.mkdir(parents=True, exist_ok=True)
                     report_path = reports_dir / "complexity_report.json"
                 else:
