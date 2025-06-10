@@ -92,11 +92,27 @@ python -m mcp_server
 
 The project provides MCP tools for IDE integration:
 
-- `list_tasks_tool` - List project tasks with filtering
+**Core Task Management:**
+- `list_tasks_tool` - List project tasks with filtering (supports type, status, priority filters)
 - `get_task_tool` - Get specific task details
 - `get_next_task_tool` - Find next task to work on
-- `parse_prd_tool` - Generate tasks from PRD using AI
+- `add_task_tool` - Create new tasks/bugs with full support for bug tracking fields
 - `set_task_status_tool` - Update task status
+- `expand_task_tool` - Break down complex tasks into subtasks
+
+**Bug Tracking:**
+- Enhanced `add_task_tool` supports bug creation with severity, steps_to_reproduce, expected_result, actual_result, environment fields
+- Enhanced `list_tasks_tool` supports filtering by task type (task, bug, feature, enhancement, research, documentation)
+- All bug-specific fields are validated and properly stored
+
+**Test Coverage Management:**
+- `update_task_test_coverage_tool` - Update test coverage data for tasks
+- Support for target vs achieved coverage tracking
+- Related test file associations
+- Test result metadata (passed/failed counts, report URLs)
+
+**Project Management:**
+- `parse_prd_tool` - Generate tasks from PRD using AI
 - `add_dependency_tool` / `remove_dependency_tool` - Manage dependencies
 - `validate_dependencies_tool` - Validate task structure
 - `init_claude_support_tool` - Setup Claude Code integration
@@ -144,6 +160,10 @@ Environment variables for model selection:
 **AI Service Architecture:** Uses LiteLLM for multi-provider AI integration with intelligent caching and cost tracking. AI operations can take 30-60 seconds due to research phases.
 
 **Task Management:** Tasks are stored in JSON format with support for dependencies, subtasks, priorities, and status tracking. The system validates dependencies to prevent circular references.
+
+**Bug Tracking System:** Full bug tracking support with dedicated fields for severity, reproduction steps, expected/actual results, and environment. Tasks can be filtered and managed by type (task, bug, feature, enhancement, research, documentation).
+
+**Test Coverage Integration:** Built-in test coverage tracking with target vs achieved coverage monitoring. Supports related test file associations and coverage reporting through `update_task_test_coverage_tool`.
 
 **MCP vs CLI:** MCP tools are preferred for programmatic IDE integration. CLI provides user interface and standalone functionality.
 

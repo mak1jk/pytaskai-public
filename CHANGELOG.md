@@ -1,5 +1,38 @@
 # PyTaskAI Changelog
 
+## 0.0.4 - 2025-01-06
+
+### 🚀 New Features
+- **Bug Tracking System**: Comprehensive bug tracking with dedicated fields
+  - Support for `type` field (task, bug, feature, enhancement, research, documentation)
+  - Bug-specific fields: severity, steps_to_reproduce, expected_result, actual_result, environment
+  - Enhanced MCP tools support for bug creation and filtering
+- **Test Coverage Tracking**: Built-in test coverage management
+  - `target_test_coverage` and `achieved_test_coverage` fields
+  - `test_report_url` for coverage reports
+  - `related_tests` field for test file associations
+  - New `update_task_test_coverage_tool` MCP tool for coverage updates
+- **Enhanced Task Management**: Extended task model with new capabilities
+  - Support for attachments field
+  - Test metadata tracking (tests_passed, total_tests, failed_tests)
+  - Improved task filtering by type in `list_tasks_tool`
+
+### 🔧 Technical Improvements  
+- Extended Pydantic models with new enums: `TaskType`, `BugSeverity`
+- Enhanced `add_task_tool` with support for bug-specific parameters
+- Improved validation for new task fields
+- Better error handling for invalid task types and coverage values
+
+### 📚 Documentation
+- Updated `IMPLEMENTATION_GUIDE.md` with complete PRD requirements
+- Enhanced tool documentation with bug tracking workflows
+- Added comprehensive examples for new task types
+
+### 🎯 Workflow Integration
+- Designed for coding agent integration where agents execute tests and report results
+- MCP tools focused on data management rather than test execution
+- Support for external test reporting and coverage analysis
+
 ## 0.0.3 - 2025-01-06
 
 ### 🚀 Features

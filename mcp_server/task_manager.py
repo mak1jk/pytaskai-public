@@ -31,6 +31,7 @@ def list_tasks_tool(
     project_root: str,
     status_filter: Optional[str] = None,
     priority_filter: Optional[str] = None,
+    type_filter: Optional[str] = None,
     include_subtasks: bool = True,
     include_stats: bool = False,
 ) -> Dict[str, Any]:
@@ -40,7 +41,8 @@ def list_tasks_tool(
     Args:
         project_root: Path assoluto alla directory del progetto
         status_filter: Filtra per status (pending, in-progress, done, cancelled)
-        priority_filter: Filtra per priorità (high, medium, low)
+        priority_filter: Filtra per priorità (highest, high, medium, low, lowest)
+        type_filter: Filtra per tipo (task, bug, feature, enhancement, research, documentation)
         include_subtasks: Includi i subtask nella risposta
         include_stats: Includi statistiche del progetto
 
@@ -74,6 +76,10 @@ def list_tasks_tool(
         if priority_filter:
             tasks = [task for task in tasks if task.get("priority") == priority_filter]
 
+        # Apply type filter
+        if type_filter:
+            tasks = [task for task in tasks if task.get("type", "task") == type_filter]
+
         # Filter subtasks if requested
         if not include_subtasks:
             for task in tasks:
@@ -86,6 +92,7 @@ def list_tasks_tool(
             "filters_applied": {
                 "status": status_filter,
                 "priority": priority_filter,
+                "type": type_filter,
                 "include_subtasks": include_subtasks,
             },
             "project_root": project_root,
@@ -1392,6 +1399,13 @@ async def add_task_tool(
                     "project_root": project_root,
                 }
 
+        # Parse related tests
+        parsed_related_tests = []
+        if related_tests:
+            parsed_related_tests = [
+                test.strip() for test in related_tests.split(",") if test.strip()
+            ]
+
         # Extract information for research if enabled
         mentioned_technologies = []
         topic_for_best_practices = ""
@@ -1497,6 +1511,7 @@ async def add_task_tool(
             "details": task_data.get("details", ""),
             "status": "pending",
             "priority": priority,
+            "type": task_type,
             "dependencies": parsed_dependencies,
             "test_strategy": task_data.get("test_strategy", ""),
             "estimated_hours": task_data.get("estimated_hours", 0.0),
@@ -1504,7 +1519,23 @@ async def add_task_tool(
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "subtasks": [],
+            "attachments": [],
+            "related_tests": parsed_related_tests,
         }
+        
+        # Add bug-specific fields if it's a bug
+        if task_type == "bug":
+            new_task.update({
+                "severity": severity,
+                "steps_to_reproduce": steps_to_reproduce,
+                "expected_result": expected_result,
+                "actual_result": actual_result,
+                "environment": environment,
+            })
+        
+        # Add test coverage fields if specified
+        if target_test_coverage is not None:
+            new_task["target_test_coverage"] = target_test_coverage
 
         # Add AI generation metadata
         if "model_used" in generation_result:
@@ -1581,6 +1612,161 @@ async def add_task_tool(
         return {
             "error": f"Failed to create task: {str(e)}",
             "prompt": prompt,
+            "project_root": project_root,
+        }
+
+
+@mcp.tool()
+def update_task_test_coverage_tool(
+    project_root: str,
+    task_id: int,
+    achieved_coverage: Optional[float] = None,
+    test_report_url: Optional[str] = None,
+    test_results_summary: Optional[str] = None,
+    tests_passed: Optional[bool] = None,
+    total_tests: Optional[int] = None,
+    failed_tests: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Aggiorna i dati di copertura test per un task specifico.
+    
+    Questo tool dovrebbe essere usato dall'agente di coding dopo aver eseguito i test,
+    per riportare i risultati e aggiornare lo stato del task.
+    
+    Args:
+        project_root: Path assoluto alla directory del progetto
+        task_id: ID del task da aggiornare
+        achieved_coverage: Percentuale di copertura raggiunta (0-100)
+        test_report_url: URL o path al report di copertura
+        test_results_summary: Riassunto testuale dei risultati dei test
+        tests_passed: Se tutti i test sono passati
+        total_tests: Numero totale di test eseguiti
+        failed_tests: Numero di test falliti
+    
+    Returns:
+        Dict contenente conferma dell'aggiornamento e stato del task
+    """
+    try:
+        logger.info(f"Updating test coverage for task {task_id}")
+        
+        # Load tasks
+        data = load_tasks(project_root)
+        if not data:
+            return {
+                "error": "No tasks file found",
+                "project_root": project_root,
+            }
+
+        tasks = [task.dict() if hasattr(task, 'dict') else task for task in data]
+        task = None
+        task_index = None
+        
+        for i, t in enumerate(tasks):
+            if t.get("id") == task_id:
+                task = t
+                task_index = i
+                break
+
+        if not task:
+            return {
+                "error": f"Task {task_id} not found",
+                "project_root": project_root,
+            }
+
+        # Update test coverage fields
+        now = datetime.now().isoformat()
+        updated_fields = []
+        
+        if achieved_coverage is not None:
+            if not (0 <= achieved_coverage <= 100):
+                return {
+                    "error": f"Invalid achieved_coverage: {achieved_coverage}. Must be between 0 and 100",
+                    "project_root": project_root,
+                }
+            task["achieved_test_coverage"] = achieved_coverage
+            updated_fields.append("achieved_test_coverage")
+        
+        if test_report_url is not None:
+            task["test_report_url"] = test_report_url
+            updated_fields.append("test_report_url")
+        
+        if test_results_summary is not None:
+            if "test_metadata" not in task:
+                task["test_metadata"] = {}
+            task["test_metadata"]["results_summary"] = test_results_summary
+            updated_fields.append("test_results_summary")
+        
+        if tests_passed is not None:
+            if "test_metadata" not in task:
+                task["test_metadata"] = {}
+            task["test_metadata"]["tests_passed"] = tests_passed
+            updated_fields.append("tests_passed")
+        
+        if total_tests is not None:
+            if "test_metadata" not in task:
+                task["test_metadata"] = {}
+            task["test_metadata"]["total_tests"] = total_tests
+            updated_fields.append("total_tests")
+        
+        if failed_tests is not None:
+            if "test_metadata" not in task:
+                task["test_metadata"] = {}
+            task["test_metadata"]["failed_tests"] = failed_tests
+            updated_fields.append("failed_tests")
+        
+        # Update timestamp
+        task["updated_at"] = now
+        
+        # Check if target coverage is met
+        target_coverage = task.get("target_test_coverage")
+        coverage_status = "not_measured"
+        
+        if achieved_coverage is not None:
+            if target_coverage is not None:
+                if achieved_coverage >= target_coverage:
+                    coverage_status = "target_met"
+                else:
+                    coverage_status = "target_not_met"
+            else:
+                coverage_status = "measured"
+        
+        # Save updated tasks
+        from shared.models import Task
+        updated_tasks = []
+        for t in tasks:
+            try:
+                updated_tasks.append(Task(**t))
+            except Exception as e:
+                logger.warning(f"Failed to convert task {t.get('id')} to Task object: {e}")
+                updated_tasks.append(t)
+        
+        success = save_tasks(project_root, updated_tasks)
+        
+        if not success:
+            return {
+                "error": "Failed to save updated task",
+                "project_root": project_root,
+            }
+        
+        logger.info(f"Successfully updated test coverage for task {task_id}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully updated test coverage for task {task_id}",
+            "task_id": task_id,
+            "updated_fields": updated_fields,
+            "coverage_status": coverage_status,
+            "achieved_coverage": achieved_coverage,
+            "target_coverage": target_coverage,
+            "timestamp": now,
+            "project_root": project_root,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating test coverage: {str(e)}")
+        return {
+            "error": f"Failed to update test coverage: {str(e)}",
+            "task_id": task_id,
             "project_root": project_root,
         }
 
