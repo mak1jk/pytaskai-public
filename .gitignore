@@ -1,0 +1,114 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific - PyTaskAI
+.taskmaster/cache/
+.taskmaster/usage/
+.taskmaster/reports/
+!.taskmaster/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Node.js (for any JS tools)
+node_modules/
+
+# Streamlit
+.streamlit/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Documentation
+docs/_build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Cache
+.cache/
+.mypy_cache/
+.ruff_cache/
+
+# FastMCP
+.mcp_cache/
+
+# Security - Never commit these
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*
+*secrets*
+api_keys.txt
+.pytaskai.config.json
+.pytaskai_aliases
+.taskmasterconfig
+
+# Local development
+test-project/
+local_test/
+debug/ 
+CLAUDE.md

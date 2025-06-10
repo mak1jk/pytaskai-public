@@ -1,0 +1,32 @@
+# Include documentation and metadata files
+include README.md
+include LICENSE.md  
+include CHANGELOG.md
+include pyproject.toml
+
+# Include all Python source files
+recursive-include mcp_server *.py
+recursive-include shared *.py
+recursive-include frontend *.py
+
+# Include CLI scripts
+include pytaskai_cli.py
+include pytaskai_minimal.py
+include setup_cli.py
+
+# Include test files for verification
+recursive-include tests *.py
+
+# Exclude build artifacts and cache
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude .git*
+global-exclude .pytest_cache
+global-exclude .mypy_cache
+global-exclude dist
+global-exclude build
+global-exclude *.egg-info

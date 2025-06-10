@@ -1,0 +1,343 @@
+---
+description: "PyTaskAI Project-Specific Rules and MCP Tool Integration"
+globs: ["**/*.py", "**/*.json", "**/*.md"]
+alwaysApply: true
+---
+
+# PyTaskAI Project-Specific Rules
+
+## Project Structure
+```
+/workspace/
+├── mcp_server/          # FastMCP server implementation
+│   ├── task_manager.py  # MCP tools for task management
+│   ├── utils.py         # Persistence and utility functions
+│   └── claude_code_setup.py  # Claude Code integration
+├── shared/              # Shared models and schemas
+│   ├── models.py        # Pydantic models for tasks and requests
+│   └── schemas.py       # Extended UI and analytics models
+├── tasks/               # Task management files
+│   └── tasks.json       # Main task database
+└── tests/               # Test files and validation
+```
+
+## Key Files and Their Purpose
+- `mcp_server/task_manager.py`: Contains all MCP tools (@mcp.tool decorated functions)
+- `mcp_server/utils.py`: File persistence, validation, and utility functions
+- `shared/models.py`: Pydantic models for Task, SubTask, and AI integration
+- `tasks/tasks.json`: Central task database with metadata
+- `pyproject.toml`: Package configuration with PyTaskAI branding
+
+## Task Management Data Model
+Tasks use the following structure:
+```json
+{
+  "id": 1,
+  "title": "Task Title",
+  "description": "Task description",
+  "status": "pending|in-progress|done|cancelled",
+  "priority": "high|medium|low",
+  "dependencies": [2, 3],
+  "subtasks": [...]
+}
+```
+
+## MCP Tool Integration
+This project provides MCP tools for task management. Always use the project_root parameter with absolute path "/workspace".
+
+# PyTaskAI MCP Tools Reference
+
+The following MCP tools are available for task management:
+
+## list_tasks_tool
+
+**Description:** No description available.
+
+**Parameters:**
+- `project_root` (Any): Required
+- `status_filter` (Any): None
+
+**Example Usage:**
+```python
+# list_tasks_tool example
+list_tasks_tool(project_root="/workspace", status_filter="in-progress")
+```
+
+## get_task_tool
+
+**Description:** No description available.
+
+**Parameters:**
+- `project_root` (Any): Required
+- `task_id` (Any): Required
+
+**Example Usage:**
+```python
+# get_task_tool example
+get_task_tool(project_root="/workspace", task_id="1")
+```
+
+## get_next_task_tool
+
+**Description:** No description available.
+
+**Parameters:**
+- `project_root` (Any): Required
+
+**Example Usage:**
+```python
+# get_next_task_tool example
+get_next_task_tool(project_root="/workspace")
+```
+
+## init_claude_support_tool
+
+**Description:** No description available.
+
+**Parameters:**
+- `project_root` (Any): Required
+- `include_windsurfrules` (Any): True
+
+**Example Usage:**
+```python
+# init_claude_support_tool example
+init_claude_support_tool(project_root="/workspace", include_windsurfrules="value")
+```
+
+
+## Development Guidelines
+- Always use absolute paths starting with "/workspace"
+- Validate task dependencies before marking tasks complete
+- Create backups before modifying tasks.json
+- Use structured error responses for all MCP tools
+- Follow the existing naming convention (snake_case for functions, PascalCase for classes)
+
+## Testing Requirements
+- Test all MCP tools with valid and invalid inputs
+- Validate JSON schema compliance
+- Test file operations with temporary directories
+- Ensure proper error handling and logging
+\n\n## Existing CLAUDE.md Content\n# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+This is a Task Master AI project - an intelligent task management system that combines traditional task planning with AI-powered features. The system operates through both an MCP (Model Context Protocol) server for integrated development environments and a CLI interface for direct user interaction.
+
+The project focuses on task-driven development workflows where users can:
+
+- Parse Product Requirements Documents (PRDs) into structured tasks
+- Generate and manage task hierarchies with AI assistance
+- Track dependencies and project complexity
+- Use research-backed task generation with multiple AI providers
+
+## Architecture
+
+**Core Components:**
+
+- **MCP Server**: Primary interface for integrated tools (Cursor, etc.) - exposes task management as structured tools
+- **CLI Interface**: `task-master` command for direct terminal interaction and fallback usage
+- **AI Service Layer**: Uses LiteLLM for multi-provider AI integration (OpenAI, Anthropic, Perplexity, etc.)
+- **Task Persistence**: JSON-based storage in `.taskmaster/tasks/tasks.json`
+- **Configuration**: `.taskmasterconfig` for settings, `.env` for API keys
+
+**Key Directories:**
+
+- `tasks/` - Individual task files and main tasks.json
+- `.cursor/rules/` - Development workflow rules and MCP tool documentation
+- `scripts/` - Example PRDs and complexity reports
+- `.cursor/mcp.json` - MCP server configuration with API key placeholders
+
+## Development Commands
+
+**Task Management (MCP preferred, CLI fallback):**
+
+- Initialize project: `task-master init` or use `initialize_project` MCP tool
+- Parse PRD: `task-master parse-prd <file>` or use `parse_prd` MCP tool
+- List tasks: `task-master list` or use `get_tasks` MCP tool
+- Get next task: `task-master next` or use `next_task` MCP tool
+- Add task: `task-master add-task --prompt="..." --research` or use `add_task` MCP tool
+- Expand task: `task-master expand --id=<id> --research --force` or use `expand_task` MCP tool
+- Update task: `task-master update-task --id=<id> --prompt="..."` or use `update_task` MCP tool
+- Set status: `task-master set-status --id=<id> --status=done` or use `set_task_status` MCP tool
+
+**AI Model Configuration:**
+
+- View/set models: `task-master models` or use `models` MCP tool
+- Interactive setup: `task-master models --setup`
+
+**Analysis:**
+
+- Complexity analysis: `task-master analyze-complexity --research` or use `analyze_project_complexity` MCP tool
+- View complexity report: `task-master complexity-report` or use `complexity_report` MCP tool
+
+## Configuration Requirements
+
+**API Keys** (required for AI features):
+
+- Set in `.env` for CLI usage or `.cursor/mcp.json` env section for MCP
+- Supported providers: ANTHROPIC_API_KEY, OPENAI_API_KEY, PERPLEXITY_API_KEY, GOOGLE_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY, AZURE_OPENAI_API_KEY, OLLAMA_API_KEY
+
+**Model Configuration**:
+
+- Use `task-master models --setup` for interactive configuration
+- All non-API settings stored in `.taskmasterconfig` (do not edit manually)
+- Supports custom Ollama and OpenRouter models
+
+## Important Implementation Notes
+
+**MCP vs CLI Priority**: Always prefer MCP tools when available for programmatic interactions. CLI serves as user interface and fallback.
+
+**AI Tool Processing**: Several tools make AI calls and can take up to a minute (parse_prd, add_task, expand_task, update operations, analyze_complexity). Inform users to wait during processing.
+
+**Task Dependencies**: System prevents circular dependencies and validates task relationships. Use dependency management tools to maintain proper task ordering.
+
+**Iterative Development**: The project follows a pattern of breaking complex tasks into subtasks, implementing iteratively, and logging progress using `update_subtask` for detailed implementation tracking.
+
+**Configuration Management**: Never manually edit `.taskmasterconfig`. Use the provided commands/tools for all configuration changes.
+
+## Testing Strategy
+
+Tasks include `testStrategy` field defining verification approaches. Always verify implementations according to test strategies before marking tasks complete. The project emphasizes test-driven development with specific verification steps for each task.
+
+## Windsurf Rules
+
+This project follows the Windsurf rules defined in the `.windsurfrules` document to ensure consistency, maintainability, and continuous improvement.
+
+### 1. DEV_WORKFLOW
+
+```markdown
+---
+description: Guide for using meta-development script (scripts/dev.js) to manage task-driven development workflows
+globs: "**/*"
+filesToApplyRule: "/*"
+alwaysApply: true
+---
+```
+
+- **Global CLI Commands**
+
+  - Task Master now provides a global CLI through the `task-master` command
+  - All functionality from `scripts/dev.js` is available through this interface
+  - Install globally with `npm install -g claude-task-master` or use locally via `npx`
+  - Use `task-master <command>` instead of `node scripts/dev.js <command>`
+  - Examples:
+    - `task-master list` instead of `node scripts/dev.js list`
+    - `task-master next` instead of `node scripts/dev.js next`
+    - `task-master expand --id=3` instead of `node scripts/dev.js expand --id=3`
+
+- **Development Workflow Process**
+  - Start new projects by running `task-master init` or `node scripts/dev.js parse-prd --input=<prd-file.txt>`
+  - Begin coding sessions with `task-master list` to see current tasks, status, and IDs
+  - Analyze task complexity with `task-master analyze-complexity --research` before breaking down tasks
+  - Select tasks based on dependencies, priority level, and ID order
+  - Clarify tasks by checking task files in `tasks/` or by asking for user input
+  - View specific task details using `task-master show <id>` or `node scripts/dev.js show --id=<id>`
+  - Break down complex tasks using `task-master expand --id=<id>` or `scripts/dev.js expand`
+  - Clear existing subtasks if needed with `task-master clear-subtasks --id=<id>`
+  - Implement code following task details, dependencies, and project standards
+  - Verify tasks according to test strategies before marking as complete
+  - Mark completed tasks with `task-master set-status --id=<id> --status=done`
+  - Update dependent tasks when implementation deviates from the original plan
+  - Generate task files with `task-master generate` after updating `tasks.json`
+  - Maintain valid dependency structure with `task-master fix-dependencies`
+
+### 2. WINDSURF_RULES
+
+```markdown
+---
+description: Guidelines for creating and maintaining Windsurf rules to ensure consistency and effectiveness.
+globs: ".windsurfrules"
+filesToApplyRule: ".windsurfrules"
+alwaysApply: true
+---
+```
+
+- **Required Rule Structure**
+
+  - Begin each section with:
+    ```markdown
+    ---
+    description: <one-line description>
+    globs: <glob patterns>
+    alwaysApply: <true|false>
+    ---
+    ```
+  - Include **Main Points in Bold**
+    - Sub-points with actionable details
+    - Examples and explanations
+
+- **Section References**
+
+  - Use `ALL_CAPS_SECTION` to reference named sections (e.g., `WINDSURF_RULES`)
+  - Link to files or sections using `[filename](mdc:path/to/file)` where appropriate
+
+- **Code Examples**
+
+  ```typescript
+  // ✅ DO: Show good examples
+  const goodExample = true;
+
+  // ❌ DON'T: Show anti-patterns
+  const badExample = false;
+  ```
+
+- **Rule Content Guidelines**
+
+  - Start with a high-level overview
+  - Provide specific, actionable requirements
+  - Show examples of correct implementation
+  - Reference existing code when possible
+  - Keep rules DRY by referencing other rules
+
+- **Rule Maintenance & Best Practices**
+  - Update rules when new patterns emerge
+  - Remove outdated or deprecated patterns
+  - Cross-reference related rules for consistency
+  - Use bullet points and clear formatting
+  - Keep descriptions concise and focused
+
+### 3. SELF_IMPROVE
+
+```markdown
+---
+description: Guidelines for continuously improving this rules document based on emerging code patterns and best practices.
+globs: "**/*"
+filesToApplyRule: "/*"
+alwaysApply: true
+---
+```
+
+- **Rule Improvement Triggers**
+
+  - New code patterns not covered by existing rules
+  - Repeated similar implementations across multiple files
+  - Common error or anti-patterns that could be prevented
+  - Emerging best practices or new libraries
+
+- **Analysis Process**
+
+  - Compare new code with existing rules to identify gaps
+  - Identify patterns that should be standardized
+  - Look for external documentation references for guidance
+  - Check for consistent error handling and test patterns
+
+- **Rule Updates**
+
+  - **Add new rules when:**
+    - A pattern appears in 3+ files
+    - Common bugs or security issues emerge
+    - Code reviews repeatedly highlight the same feedback
+  - **Modify existing rules when:**
+    - Better examples or edge cases are discovered
+    - Related rules have been updated
+
+- **Continuous Improvement Practices**
+  - Monitor code review comments and real-world usage
+  - Track frequent development questions
+  - Update rules after major refactors or library upgrades
+  - Add links to relevant documentation
+  - Cross-reference related rules to maintain cohesion
+
+---

@@ -1,0 +1,38 @@
+---
+description: "PyTaskAI Self-Improvement and Learning Guidelines"
+globs: ["**/*.py", "**/*.md"]
+alwaysApply: true
+---
+
+# PyTaskAI Self-Improvement Guidelines
+
+## Learning from Code Patterns
+When examining existing code:
+- Analyze current naming conventions and follow them
+- Study existing error handling patterns and replicate them
+- Review how dependencies are managed throughout the codebase
+- Understand the project's architectural decisions and maintain consistency
+
+## Code Quality Improvements
+- Identify repetitive code patterns and suggest refactoring
+- Look for opportunities to improve error messages and user feedback
+- Suggest performance optimizations for file I/O operations
+- Recommend additional validation and safety checks
+
+## Feature Enhancement Opportunities
+- Identify missing error cases that should be handled
+- Suggest additional tool parameters that would be useful
+- Recommend logging improvements for better debugging
+- Propose additional validation for data integrity
+
+## Documentation Improvements
+- Ensure all functions have clear, comprehensive docstrings
+- Add inline comments for complex logic
+- Maintain up-to-date README.md with current features
+- Create usage examples for new MCP tools
+
+## Testing and Validation
+- Suggest edge cases that should be tested
+- Recommend integration tests for MCP tool interactions
+- Identify areas where additional validation would prevent errors
+- Propose performance benchmarks for critical operations
