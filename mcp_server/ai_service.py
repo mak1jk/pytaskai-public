@@ -443,7 +443,7 @@ class AIService:
                     **kwargs,
                 )
 
-            raise Exception(f"AI call failed: {str(e)}")
+            raise AICallError(f"AI call failed: {str(e)}")
 
         except litellm.APIError as e:
             latency = time.time() - start_time
@@ -477,7 +477,7 @@ class AIService:
                     **kwargs,
                 )
 
-            raise Exception(f"AI call failed: {str(e)}")
+            raise AICallError(f"AI call failed: {str(e)}")
 
         except Exception as e:
             latency = time.time() - start_time
@@ -511,48 +511,38 @@ class AIService:
                     **kwargs,
                 )
 
-            raise Exception(f"AI call failed: {str(e)}")
+            raise AICallError(f"AI call failed: {str(e)}")
 
     def _get_model_config(self, model_name: str) -> Tuple[ModelConfig, ModelProvider]:
-        """Get model configuration and provider."""
-        model_lower = model_name.lower()
-        provider = self._detect_provider(model_name)
-        max_tokens = 4096
-        temperature = 0.7
+        """Return the model configuration and its provider (simplified)."""
+        
+        # If model_name is a role key, get the actual model name
+        if model_name in self.models:
+            actual_model_name = self.models[model_name].name
+        else:
+            actual_model_name = model_name
 
-        if provider == ModelProvider.ANTHROPIC:
-            max_tokens = 4096
-            temperature = 0.7
-        elif provider == ModelProvider.PERPLEXITY:
-            max_tokens = 4096
-            temperature = 0.7
-        elif provider == ModelProvider.GOOGLE:
+        provider = self._detect_provider(actual_model_name)
+        model_lower = actual_model_name.lower()
+
+        # Determine token limit
+        if provider == ModelProvider.GOOGLE:
             max_tokens = 8192
-            temperature = 0.7
-        elif provider == ModelProvider.XAI:
+        elif provider == ModelProvider.OPENAI and "gpt-4o-mini" in model_lower:
+            max_tokens = 16384
+        else:
+            # Anthropic, Perplexity, XAI, other OpenAI models
             max_tokens = 4096
-            temperature = 0.7
-        else:  # Default to OpenAI settings
-            if "gpt-4o-mini" in model_lower:
-                max_tokens = 16384
-                temperature = 0.7
-            elif "gpt-4o" in model_lower:
-                max_tokens = 4096
-                temperature = 0.7
-            elif "gpt-4-turbo" in model_lower or "gpt-4" in model_lower:
-                max_tokens = 4096
-                temperature = 0.7
-            else:  # gpt-3.5 or others
-                max_tokens = 4096
-                temperature = 0.7
+
+        temperature = 0.7  # Default temperature, overridable via env if needed
 
         return (
             ModelConfig(
-                name=model_name,
+                name=actual_model_name,
                 provider=provider,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                cost_per_1k_tokens=self._get_model_cost(model_name),
+                cost_per_1k_tokens=self._get_model_cost(actual_model_name),
                 supports_json=True,
             ),
             provider,
@@ -606,7 +596,7 @@ class AIService:
         )
 
         result = await self._research_llm_call(
-            model_name=self.models[ModelRole.RESEARCH].name,
+            model_name=self.models["research_generation"].name,
             system_prompt=RESEARCH_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             operation_type=OperationType.LTS_RESEARCH,
@@ -634,7 +624,7 @@ class AIService:
         self, tech_key: str, user_prompt: str, result: Any, lts_versions: Dict[str, str]
     ):
         """Cache results and log savings."""
-        model_name = self.models[ModelRole.RESEARCH].name
+        model_name = self.models["research_generation"].name
         cost_estimate = self._estimate_cost(
             len(user_prompt), len(str(result)), model_name
         )
@@ -857,7 +847,15 @@ class AIService:
                         f"Research completed with {len(findings_parts)} findings"
                     )
 
-            # Phase 2: Task Generation
+            # Phase 2: Task Generation – silence unused-parameter lints
+            _ = (
+                mentioned_technologies,
+                topic_for_best_practices,
+                research_query,
+                kwargs,
+            )
+
+            # Continue with Task Generation
             logger.info("Starting task generation phase")
 
             # Import prompt functions
@@ -897,9 +895,12 @@ class AIService:
             logger.info("Task generation completed successfully")
             return result
 
+        except TaskGenerationError:
+            # Already specific, re-raise
+            raise
         except Exception as e:
             logger.error(f"Task generation failed: {str(e)}")
-            raise Exception(f"Failed to generate task: {str(e)}")
+            raise TaskGenerationError(f"Failed to generate task: {str(e)}")
 
     async def _generate_subtasks(
         self,
@@ -970,7 +971,7 @@ class AIService:
     async def _make_subtask_request(self, system_prompt: str, user_prompt: str) -> Dict:
         """Make the API request for subtask generation."""
         return await self._research_llm_call(
-            model_name=self.models[ModelRole.TASK_MANAGEMENT].name,
+            model_name=self.models["default_generation"].name,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             operation_type=OperationType.TASK_GENERATION,
@@ -1210,6 +1211,15 @@ class AIService:
             return self.models[model_name].provider.value
         else:
             return self._detect_provider(model_name).value
+
+
+# Custom exception classes
+class AICallError(RuntimeError):
+    """Raised when an AI model call fails after fallback attempts."""
+
+
+class TaskGenerationError(RuntimeError):
+    """Raised when the task generation pipeline fails irrecoverably."""
 
 
 # Export the main class
