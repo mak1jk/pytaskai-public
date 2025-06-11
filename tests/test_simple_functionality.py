@@ -86,7 +86,7 @@ class TestCoreFunctionality(unittest.TestCase):
         )
         
         # Serialize to dict
-        task_dict = task.dict()
+        task_dict = task.model_dump()
         self.assertIn("type", task_dict)
         self.assertEqual(task_dict["type"], "feature")
         self.assertEqual(task_dict["target_test_coverage"], 90.0)

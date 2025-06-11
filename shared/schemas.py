@@ -9,7 +9,7 @@ from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 from enum import Enum
 
-from .models import TaskStatus, TaskPriority, TaskType, BugSeverity, Task, SubTask
+from .models import TaskStatus, TaskPriority, Task
 
 
 # =============================================================================

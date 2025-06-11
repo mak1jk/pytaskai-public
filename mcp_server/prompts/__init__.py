@@ -16,6 +16,8 @@ from .lts_research_prompt import (
     create_dependency_research_prompt,
     create_migration_research_prompt,
     validate_lts_research_response,
+    RESEARCH_SYSTEM_PROMPT,
+    RESEARCH_LTS_VERSIONS_PROMPT,
 )
 
 from .best_practices_prompt import (

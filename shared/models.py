@@ -6,7 +6,7 @@ including core data models and MCP tool request/response schemas.
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union, Literal
+from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
@@ -185,7 +185,7 @@ class Task(BaseModel):
     type: TaskType = Field(
         default=TaskType.TASK, description="Type of task (task, bug, feature, etc.)"
     )
-    
+
     # Bug-specific fields (only relevant when type=BUG)
     severity: Optional[BugSeverity] = Field(
         default=None, description="Bug severity level (only for bugs)"
@@ -205,7 +205,7 @@ class Task(BaseModel):
     attachments: List[str] = Field(
         default_factory=list, description="List of attachment URLs or file paths"
     )
-    
+
     # Test coverage fields
     target_test_coverage: Optional[float] = Field(
         default=None, ge=0, le=100, description="Target test coverage percentage"
@@ -238,7 +238,7 @@ class Task(BaseModel):
             return None
         if isinstance(v, str):
             try:
-                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                return datetime.fromisoformat(v.replace("Z", "+00:00"))
             except ValueError:
                 return datetime.now()
         if isinstance(v, datetime):
@@ -253,7 +253,7 @@ class Task(BaseModel):
         return v
 
     @field_validator("completed_at", mode="before")
-    @classmethod 
+    @classmethod
     def validate_completed_at(cls, v):
         # Note: Cross-field validation moved to model_validator if needed
         return v
@@ -308,7 +308,7 @@ class AddTaskRequest(BaseModel):
     estimated_hours: Optional[float] = Field(
         default=None, ge=0, description="Estimated hours to complete"
     )
-    
+
     # Bug-specific fields (only used when type=BUG)
     severity: Optional[BugSeverity] = Field(
         default=None, description="Bug severity level (only for bugs)"
@@ -325,7 +325,7 @@ class AddTaskRequest(BaseModel):
     environment: Optional[str] = Field(
         default=None, description="Environment where bug occurs (only for bugs)"
     )
-    
+
     # Test coverage fields
     target_test_coverage: Optional[float] = Field(
         default=None, ge=0, le=100, description="Target test coverage percentage"

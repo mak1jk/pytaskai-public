@@ -11,12 +11,13 @@ import logging
 import re
 import time
 from typing import Dict, List, Any, Optional, Union, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
 
 from .cache_manager import get_cache_manager, CacheType, RateLimitStatus
-from .usage_tracker import get_usage_tracker, OperationType, CallStatus, record_ai_usage
+from .usage_tracker import get_usage_tracker, OperationType, CallStatus
+from .prompts import RESEARCH_SYSTEM_PROMPT, RESEARCH_LTS_VERSIONS_PROMPT
 
 
 import litellm
@@ -33,6 +34,15 @@ class ModelProvider(str, Enum):
     PERPLEXITY = "perplexity"
     GOOGLE = "google"
     XAI = "xai"
+
+
+class ModelRole(str, Enum):
+    """AI model roles for different operations"""
+
+    RESEARCH = "research"              # For LTS research and web searches
+    TASK_MANAGEMENT = "task_management"  # For task generation and management
+    DEFAULT = "default"                # Default/fallback model
+    BEST_PRACTICES = "best_practices"  # For coding best practices analysis
 
 
 @dataclass
@@ -141,19 +151,21 @@ class AIService:
         logger.info("AIService initialized with multi-provider support")
 
     def _estimate_cost(
-        self, prompt_length: int, response_length: int, model_name: str
+        self, input_length: int, output_length: int, model_name: str
     ) -> float:
-        """Estimate cost for AI call based on token usage."""
+        """Estimate cost based on token counts."""
         # Rough estimation: 4 characters per token
-        prompt_tokens = prompt_length // 4
-        response_tokens = response_length // 4
-        total_tokens = prompt_tokens + response_tokens
+        input_tokens = input_length // 4
+        output_tokens = output_length // 4
+        total_tokens = input_tokens + output_tokens
 
-        cost_per_1k = self._get_model_cost(model_name)
+        # Use model cost from config
+        model_config = self._get_model_config(model_name)
+        cost_per_1k = model_config.cost_per_1k_tokens
         return (total_tokens / 1000) * cost_per_1k
 
     def _setup_model_configurations(self) -> Dict[str, ModelConfig]:
-        """Setup model configurations for different use cases from environment variables."""
+        """Setup model configurations from environment variables."""
         import os
 
         # Default model configurations
@@ -168,10 +180,12 @@ class AIService:
         # Read model configurations from environment variables
         env_models = {
             "default_generation": os.getenv(
-                "PYTASKAI_DEFAULT_MODEL", defaults["default_generation"]
+                "PYTASKAI_DEFAULT_MODEL",
+                defaults["default_generation"]
             ),
             "research_generation": os.getenv(
-                "PYTASKAI_RESEARCH_MODEL", defaults["research_generation"]
+                "PYTASKAI_RESEARCH_MODEL",
+                defaults["research_generation"]
             ),
             "lts_search": os.getenv("PYTASKAI_LTS_MODEL", defaults["lts_search"]),
             "best_practices_search": os.getenv(
@@ -209,7 +223,7 @@ class AIService:
                 supports_json=True,
             )
 
-        logger.info(f"Configured AI models from environment:")
+        logger.info("Configured AI models from environment:")
         for role, config in models.items():
             logger.info(f"  {role}: {config.name} ({config.provider.value})")
 
@@ -275,26 +289,21 @@ class AIService:
             operation_type: Type of operation for tracking
             operation_context: Context description for tracking
             tool_name: MCP tool name if applicable
+            error_message: Error message if this is a retry after error
             **kwargs: Additional arguments for the LLM call
 
         Returns:
             Parsed JSON response from the AI model
         """
         start_time = time.time()
-        model_config = None
-        provider = None
-        estimated_cost = 0.0
+        model_config, provider = self._get_model_config(model_name)
 
         try:
-            # Get model config and provider
-            model_config = self._get_model_config(model_name)
-            provider = self._detect_provider(model_name).value
-
             # Check rate limits
             await self.cache_manager.wait_for_rate_limit(provider, model_name)
             self.cache_manager.record_api_call(provider, model_name)
 
-            # Cache is now handled at higher level methods (_get_lts_versions, _get_best_practices)
+            # Cache is now handled at higher level methods
 
             # Prepare messages
             messages = [
@@ -304,19 +313,25 @@ class AIService:
 
             # Remove custom parameters that shouldn't be passed to LiteLLM
             force_json = kwargs.pop("force_json", True)
-            
+
             # Remove all known non-LiteLLM parameters
             non_litellm_params = [
-                "mentioned_technologies", "topic_for_best_practices", "research_query", 
-                "prompt", "operation_type", "operation_context", "tool_name", "error_message"
+                "mentioned_technologies",
+                "topic_for_best_practices",
+                "research_query",
+                "prompt",
+                "operation_type",
+                "operation_context",
+                "tool_name",
+                "error_message",
             ]
             for param in non_litellm_params:
                 kwargs.pop(param, None)
-            
+
             # Debug log remaining kwargs
             if kwargs:
                 logger.debug(f"Remaining kwargs for LiteLLM: {list(kwargs.keys())}")
-            
+
             # Prepare LiteLLM arguments - only use known safe parameters
             llm_args = {
                 "model": model_config.name,
@@ -325,9 +340,15 @@ class AIService:
                 "temperature": model_config.temperature,
                 "timeout": model_config.timeout,
             }
-            
+
             # Only add kwargs that are known to be safe for LiteLLM
-            safe_kwargs = ["stream", "stop", "top_p", "frequency_penalty", "presence_penalty"]
+            safe_kwargs = [
+                "stream",
+                "stop",
+                "top_p",
+                "frequency_penalty",
+                "presence_penalty",
+            ]
             for key, value in kwargs.items():
                 if key in safe_kwargs:
                     llm_args[key] = value
@@ -350,17 +371,18 @@ class AIService:
                 parsed_content = json.loads(content)
             except json.JSONDecodeError:
                 logger.warning(
-                    f"Failed to parse JSON from {model_config.name}, returning raw content"
+                    f"Failed to parse JSON from {model_config.name}"
                 )
                 parsed_content = {"raw_content": content, "parsing_error": True}
 
             # Calculate metrics
             latency = time.time() - start_time
             usage = response.usage
-            cost = self._calculate_cost(
-                usage.total_tokens, model_config.cost_per_1k_tokens
+            cost = self._estimate_cost(
+                len(user_prompt),
+                len(str(response.choices[0].message.content)),
+                model_name,
             )
-            estimated_cost = cost
 
             # Update old metrics
             self._update_metrics(model_name, usage.total_tokens, cost, latency, True)
@@ -383,10 +405,79 @@ class AIService:
             )
 
             logger.info(
-                f"AI call successful: {usage.total_tokens} tokens, ${cost:.4f}, {latency:.2f}s"
+                f"AI call successful: {usage.total_tokens} tokens, "
+                f"${cost:.4f}, {latency:.2f}s"
             )
 
             return parsed_content
+
+        except litellm.RateLimitError as e:
+            latency = time.time() - start_time
+            self._update_metrics(model_name, 0, 0, latency, False)
+
+            # Record failed usage tracking
+            if provider and model_config:
+                self.usage_tracker.record_usage(
+                    provider=provider,
+                    model=model_config.name,
+                    operation_type=operation_type,
+                    operation_context=operation_context or f"{model_name} call",
+                    status=CallStatus.FAILED,
+                    duration_ms=int(latency * 1000),
+                    tool_name=tool_name,
+                    error_message=str(e),
+                )
+
+            logger.error(f"AI call failed for {model_name}: {str(e)}")
+
+            # Try fallback model if available
+            if model_name != "fallback":
+                logger.info("Attempting fallback model")
+                return await self._research_llm_call(
+                    "fallback",
+                    system_prompt,
+                    user_prompt,
+                    operation_type=operation_type,
+                    operation_context=operation_context,
+                    tool_name=tool_name,
+                    **kwargs,
+                )
+
+            raise Exception(f"AI call failed: {str(e)}")
+
+        except litellm.APIError as e:
+            latency = time.time() - start_time
+            self._update_metrics(model_name, 0, 0, latency, False)
+
+            # Record failed usage tracking
+            if provider and model_config:
+                self.usage_tracker.record_usage(
+                    provider=provider,
+                    model=model_config.name,
+                    operation_type=operation_type,
+                    operation_context=operation_context or f"{model_name} call",
+                    status=CallStatus.FAILED,
+                    duration_ms=int(latency * 1000),
+                    tool_name=tool_name,
+                    error_message=str(e),
+                )
+
+            logger.error(f"AI call failed for {model_name}: {str(e)}")
+
+            # Try fallback model if available
+            if model_name != "fallback":
+                logger.info("Attempting fallback model")
+                return await self._research_llm_call(
+                    "fallback",
+                    system_prompt,
+                    user_prompt,
+                    operation_type=operation_type,
+                    operation_context=operation_context,
+                    tool_name=tool_name,
+                    **kwargs,
+                )
+
+            raise Exception(f"AI call failed: {str(e)}")
 
         except Exception as e:
             latency = time.time() - start_time
@@ -422,118 +513,141 @@ class AIService:
 
             raise Exception(f"AI call failed: {str(e)}")
 
+    def _get_model_config(self, model_name: str) -> Tuple[ModelConfig, ModelProvider]:
+        """Get model configuration and provider."""
+        model_lower = model_name.lower()
+        provider = self._detect_provider(model_name)
+        max_tokens = 4096
+        temperature = 0.7
+
+        if provider == ModelProvider.ANTHROPIC:
+            max_tokens = 4096
+            temperature = 0.7
+        elif provider == ModelProvider.PERPLEXITY:
+            max_tokens = 4096
+            temperature = 0.7
+        elif provider == ModelProvider.GOOGLE:
+            max_tokens = 8192
+            temperature = 0.7
+        elif provider == ModelProvider.XAI:
+            max_tokens = 4096
+            temperature = 0.7
+        else:  # Default to OpenAI settings
+            if "gpt-4o-mini" in model_lower:
+                max_tokens = 16384
+                temperature = 0.7
+            elif "gpt-4o" in model_lower:
+                max_tokens = 4096
+                temperature = 0.7
+            elif "gpt-4-turbo" in model_lower or "gpt-4" in model_lower:
+                max_tokens = 4096
+                temperature = 0.7
+            else:  # gpt-3.5 or others
+                max_tokens = 4096
+                temperature = 0.7
+
+        return (
+            ModelConfig(
+                name=model_name,
+                provider=provider,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                cost_per_1k_tokens=self._get_model_cost(model_name),
+                supports_json=True,
+            ),
+            provider,
+        )
+
     async def _get_lts_versions(self, technologies: List[str]) -> Dict[str, str]:
         """
-        Research current LTS versions for specified technologies with caching.
+        Get LTS versions for technologies with caching.
 
         Args:
             technologies: List of technology names to research
 
         Returns:
-            Dictionary mapping technology names to their LTS versions
+            Dict mapping technology names to their LTS versions
         """
         try:
-            # Create cache key from technologies list
             tech_key = ",".join(sorted(technologies))
-            model_name = self.models["lts_search"].name
+            cached = self._get_cached_versions(tech_key, technologies)
+            if cached is not None:
+                return cached
 
-            # Check cache first
-            cached_result = self.cache_manager.get(
-                prompt=f"lts_versions:{tech_key}",
-                model=model_name,
-                cache_type=CacheType.LTS_RESEARCH,
-            )
+            user_prompt, result = await self._fetch_lts_data(technologies)
+            lts_versions = self._extract_versions(result)
+            self._cache_results(tech_key, user_prompt, result, lts_versions)
 
-            if cached_result is not None:
-                logger.info(
-                    f"Using cached LTS versions for {len(technologies)} technologies"
-                )
-
-                # Record cache hit
-                self.usage_tracker.record_usage(
-                    provider=self.models["lts_search"].provider.value,
-                    model=model_name,
-                    operation_type=OperationType.LTS_RESEARCH,
-                    operation_context=f"LTS research for {len(technologies)} technologies (cached): {', '.join(technologies[:3])}{'...' if len(technologies) > 3 else ''}",
-                    status=CallStatus.CACHED,
-                    cache_hit=True,
-                )
-
-                return cached_result
-
-            # Import prompt functions
-            from .prompts.lts_research_prompt import (
-                get_lts_research_system_prompt,
-                get_lts_research_user_prompt,
-            )
-
-            # Generate prompts
-            system_prompt = get_lts_research_system_prompt()
-            user_prompt = get_lts_research_user_prompt(
-                technologies=technologies,
-                additional_context="Focus on current LTS versions suitable for production use",
-            )
-
-            # Check rate limiting
-            provider = self.models["lts_search"].provider.value
-            status = self.cache_manager.check_rate_limit(provider, model_name)
-
-            if status == RateLimitStatus.RATE_LIMITED:
-                # Get user-friendly message with configuration instructions
-                rate_limit_msg = self.cache_manager.get_rate_limit_message(
-                    provider, model_name
-                )
-                if rate_limit_msg:
-                    logger.error(rate_limit_msg)
-                logger.warning(
-                    f"Rate limited for {provider}, using fallback or cached data"
-                )
-                return {}
-
-            # Wait if approaching limits
-            await self.cache_manager.wait_for_rate_limit(provider, model_name)
-
-            # Record API call
-            self.cache_manager.record_api_call(provider, model_name)
-
-            # Make research call
-            result = await self._research_llm_call(
-                "lts_search",
-                system_prompt,
-                user_prompt,
-                operation_type=OperationType.LTS_RESEARCH,
-                operation_context=f"LTS research for {len(technologies)} technologies: {', '.join(technologies[:3])}{'...' if len(technologies) > 3 else ''}",
-            )
-
-            # Extract LTS versions from result
-            lts_versions = {}
-            if "technologies" in result:
-                for tech_info in result["technologies"]:
-                    tech_name = tech_info.get("name", "")
-                    lts_version = tech_info.get("current_lts_version", "")
-                    if tech_name and lts_version:
-                        lts_versions[tech_name] = lts_version
-
-            # Cache the result and record cache savings
-            cost_estimate = self._estimate_cost(
-                len(user_prompt), len(str(result)), model_name
-            )
-            self.cache_manager.set(
-                prompt=f"lts_versions:{tech_key}",
-                model=model_name,
-                cache_type=CacheType.LTS_RESEARCH,
-                value=lts_versions,
-                cost_saved=cost_estimate,
-            )
-
-            logger.info(
-                f"Found and cached LTS versions for {len(lts_versions)} technologies"
-            )
             return lts_versions
-
         except Exception as e:
             logger.error(f"Failed to get LTS versions: {str(e)}")
             return {}
+
+    def _get_cached_versions(
+        self, tech_key: str, technologies: List[str]
+    ) -> Optional[Dict[str, str]]:
+        """Check cache for existing LTS versions."""
+        cached = self.cache_manager.get(
+            prompt=f"lts_versions:{tech_key}",
+            model="",
+            cache_type=CacheType.LTS_RESEARCH,
+        )
+        if cached is not None:
+            logger.info(
+                f"Using cached LTS versions for {len(technologies)} technologies"
+            )
+            return cached
+        return None
+
+    async def _fetch_lts_data(self, technologies: List[str]) -> Tuple[str, Any]:
+        """Fetch LTS data from LLM."""
+        user_prompt = RESEARCH_LTS_VERSIONS_PROMPT.format(
+            technologies=", ".join(technologies)
+        )
+
+        result = await self._research_llm_call(
+            model_name=self.models[ModelRole.RESEARCH].name,
+            system_prompt=RESEARCH_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            operation_type=OperationType.LTS_RESEARCH,
+            operation_context=(
+                f"LTS research for {len(technologies)} technologies: "
+                f"{', '.join(technologies[:3])}"
+                f"{'...' if len(technologies) > 3 else ''}"
+            ),
+        )
+
+        return user_prompt, result
+
+    def _extract_versions(self, result: Any) -> Dict[str, str]:
+        """Extract LTS versions from API response."""
+        lts_versions = {}
+        if "technologies" in result:
+            for tech_info in result["technologies"]:
+                tech_name = tech_info.get("name", "")
+                lts_version = tech_info.get("current_lts_version", "")
+                if tech_name and lts_version:
+                    lts_versions[tech_name] = lts_version
+        return lts_versions
+
+    def _cache_results(
+        self, tech_key: str, user_prompt: str, result: Any, lts_versions: Dict[str, str]
+    ):
+        """Cache results and log savings."""
+        model_name = self.models[ModelRole.RESEARCH].name
+        cost_estimate = self._estimate_cost(
+            len(user_prompt), len(str(result)), model_name
+        )
+        self.cache_manager.set(
+            prompt=f"lts_versions:{tech_key}",
+            model=model_name,
+            cache_type=CacheType.LTS_RESEARCH,
+            value=lts_versions,
+            cost_saved=cost_estimate,
+        )
+        logger.info(
+            f"Found and cached LTS versions for {len(lts_versions)} technologies"
+        )
 
     async def _get_best_practices(self, topic: str, context: str = "") -> List[str]:
         """
@@ -548,7 +662,7 @@ class AIService:
         """
         try:
             # Create cache key from topic and context
-            cache_key = f"best_practices:{topic}:{context[:100]}"  # Limit context length for key
+            cache_key = f"best_practices:{topic}:{context[:100]}"
             model_name = self.models["best_practices_search"].name
 
             # Check cache first
@@ -787,6 +901,118 @@ class AIService:
             logger.error(f"Task generation failed: {str(e)}")
             raise Exception(f"Failed to generate task: {str(e)}")
 
+    async def _generate_subtasks(
+        self,
+        parent_task_id: int,
+        title: str,
+        description: str,
+        task_type: str,
+        priority: str,
+        target_count: int = 5,
+        additional_context: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate subtasks for a parent task using AI.
+
+        Args:
+            parent_task_id: ID of the parent task
+            title: Title of the parent task
+            description: Description of the parent task
+            task_type: Type of task (task, bug, feature, etc)
+            priority: Priority level (high, medium, low)
+            target_count: Target number of subtasks to generate
+            additional_context: Additional context for subtask generation
+
+        Returns:
+            List of generated subtasks
+        """
+        try:
+            system_prompt, user_prompt = self._build_subtask_prompts(
+                title,
+                description,
+                task_type,
+                priority,
+                target_count,
+                additional_context,
+            )
+            result = await self._make_subtask_request(system_prompt, user_prompt)
+            return self._parse_subtask_response(result, parent_task_id)
+        except Exception as e:
+            logger.error(f"Failed to generate subtasks: {str(e)}")
+            return []
+
+    def _build_subtask_prompts(
+        self,
+        title: str,
+        description: str,
+        task_type: str,
+        priority: str,
+        target_count: int,
+        additional_context: str,
+    ) -> Tuple[str, str]:
+        """Build system and user prompts for subtask generation."""
+        from .prompts.task_management_prompts import (
+            get_subtask_generation_system_prompt,
+            get_subtask_generation_user_prompt,
+        )
+
+        system_prompt = get_subtask_generation_system_prompt()
+        user_prompt = get_subtask_generation_user_prompt(
+            title=title,
+            description=description,
+            task_type=task_type,
+            priority=priority,
+            target_count=target_count,
+            additional_context=additional_context,
+        )
+        return system_prompt, user_prompt
+
+    async def _make_subtask_request(self, system_prompt: str, user_prompt: str) -> Dict:
+        """Make the API request for subtask generation."""
+        return await self._research_llm_call(
+            model_name=self.models[ModelRole.TASK_MANAGEMENT].name,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            operation_type=OperationType.TASK_GENERATION,
+            operation_context="Generating subtasks",
+        )
+
+    def _parse_subtask_response(
+        self, result: Dict, parent_task_id: int
+    ) -> List[Dict[str, Any]]:
+        """Parse the API response to extract subtasks."""
+        subtasks = []
+        if "subtasks" in result and isinstance(result["subtasks"], list):
+            for i, subtask in enumerate(result["subtasks"], 1):
+                try:
+                    subtask_id = f"{parent_task_id}.{i}"
+                    title = subtask.get("title", f"Subtask {subtask_id}")
+                    description = subtask.get("description", "")
+                    status = "pending"
+                    priority = subtask.get("priority", "medium")
+                    test_strategy = subtask.get("test_strategy", "")
+                    details = subtask.get("details", {})
+
+                    subtasks.append(
+                        {
+                            "id": subtask_id,
+                            "title": title,
+                            "description": description,
+                            "status": status,
+                            "priority": priority,
+                            "test_strategy": test_strategy,
+                            "details": details,
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to process subtask {i}: {str(e)}")
+                    continue
+        else:
+            logger.warning("No valid subtasks found in response")
+
+        logger.info(f"Generated {len(subtasks)} subtasks")
+        return subtasks
+
     def _extract_technologies(self, text: str) -> List[str]:
         """Extract technology names from text."""
         # Common technology patterns
@@ -860,12 +1086,6 @@ class AIService:
     def export_usage_data(self, filename: Optional[str] = None) -> str:
         """Export usage data to CSV file."""
         return self.usage_tracker.export_to_csv(filename)
-
-    def _get_model_config(self, model_name: str) -> ModelConfig:
-        """Get model configuration by name."""
-        if model_name in self.models:
-            return self.models[model_name]
-        return self.models["fallback"]
 
     def _generate_cache_key(
         self, model_name: str, system_prompt: str, user_prompt: str
@@ -941,9 +1161,7 @@ class AIService:
             cost_saved=cost_estimate,
         )
 
-    async def _check_rate_limit(
-        self, model_or_provider: str, model_name: str = None
-    ) -> bool:
+    async def _check_rate_limit(self, model_or_provider: str) -> bool:
         """Check if rate limit allows making a call."""
         import time
 

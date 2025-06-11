@@ -502,13 +502,52 @@ For each dependency, determine:
 Provide structured recommendations prioritizing stability and long-term maintenance."""
 
 
-# Export functions for use in AI service
+# =============================================================================
+# PROMPT CONSTANTS FOR AI SERVICE
+# =============================================================================
+
+RESEARCH_SYSTEM_PROMPT = """You are an expert technology researcher specializing in Long Term Support (LTS) versions and best practices for software development.
+
+Your expertise includes:
+- LTS version recommendations for all major technologies
+- Compatibility analysis between different technology versions
+- Production deployment best practices
+- Security and maintenance considerations
+- Performance optimization recommendations
+
+Always prioritize stability, security, and long-term maintainability in your recommendations.
+Provide specific version numbers when available and explain the rationale behind recommendations."""
+
+RESEARCH_LTS_VERSIONS_PROMPT = """Research and provide the latest LTS (Long Term Support) versions and recommendations for the following technologies: {technologies}
+
+For each technology, provide:
+
+1. **Current LTS Version**: The latest stable LTS release
+2. **Release Date**: When this LTS version was released  
+3. **Support Timeline**: How long this LTS version will be supported
+4. **Key Features**: Major improvements in this LTS version
+5. **Production Readiness**: Assessment for production deployment
+6. **Known Issues**: Any critical bugs or limitations to be aware of
+7. **Upgrade Path**: Recommended migration strategy from previous versions
+
+**Output Format**: Provide a structured response with clear sections for each technology.
+
+**Focus Areas**:
+- Prioritize stability and long-term support over cutting-edge features
+- Include security considerations and update policies
+- Mention compatibility with major deployment platforms (Docker, cloud providers)
+- Consider enterprise/production environment requirements"""
+
+
+# Export functions and constants for use in AI service
 __all__ = [
     "create_lts_research_prompt",
-    "create_dependency_research_prompt",
+    "create_dependency_research_prompt", 
     "create_migration_research_prompt",
     "validate_lts_research_response",
     "get_lts_research_system_prompt",
     "get_lts_research_user_prompt",
     "get_lts_compatibility_prompt",
+    "RESEARCH_SYSTEM_PROMPT",
+    "RESEARCH_LTS_VERSIONS_PROMPT",
 ]

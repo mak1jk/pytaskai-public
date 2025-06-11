@@ -209,13 +209,13 @@ def load_tasks(project_root: str = ".") -> List[Task]:
     """Load tasks from SQLite database"""
     try:
         from .database import get_db_manager
-        
+
         # Get database manager
         db_manager = get_db_manager(project_root)
-        
+
         # Get all tasks as dictionaries
         tasks_data = db_manager.get_all_tasks(include_subtasks=True)
-        
+
         # Convert to Task objects
         tasks = []
         for task_data in tasks_data:
@@ -223,12 +223,14 @@ def load_tasks(project_root: str = ".") -> List[Task]:
                 task = Task(**task_data)
                 tasks.append(task)
             except Exception as e:
-                logger.error(f"Failed to parse task {task_data.get('id', 'unknown')}: {e}")
+                logger.error(
+                    f"Failed to parse task {task_data.get('id', 'unknown')}: {e}"
+                )
                 continue
-        
+
         logger.info(f"Loaded {len(tasks)} tasks from SQLite database")
         return tasks
-        
+
     except Exception as e:
         logger.error(f"Failed to load tasks from database: {e}")
         # Fall back to JSON if database fails
@@ -263,7 +265,9 @@ def _load_tasks_from_json_fallback(project_root: str = ".") -> List[Task]:
                 task = Task(**task_data)
                 tasks.append(task)
             except Exception as e:
-                logger.error(f"Failed to parse task {task_data.get('id', 'unknown')}: {e}")
+                logger.error(
+                    f"Failed to parse task {task_data.get('id', 'unknown')}: {e}"
+                )
                 continue
 
         logger.info(f"Loaded {len(tasks)} tasks from JSON fallback: {tasks_file}")
@@ -281,21 +285,21 @@ def save_tasks(tasks: List[Task], project_root: str = ".") -> bool:
     """Save tasks to SQLite database"""
     try:
         from .database import get_db_manager
-        
+
         # Get database manager
         db_manager = get_db_manager(project_root)
-        
-        # This function is mainly used for bulk updates, 
+
+        # This function is mainly used for bulk updates,
         # but for individual operations we'll use the database methods directly
         # For now, we'll handle it as individual updates/creates
-        
+
         saved_count = 0
         for task in tasks:
             task_dict = task.model_dump()
-            
+
             # Check if task exists
             existing_task = db_manager.get_task_by_id(task.id)
-            
+
             if existing_task:
                 # Update existing task
                 if db_manager.update_task(task.id, task_dict):
@@ -304,13 +308,13 @@ def save_tasks(tasks: List[Task], project_root: str = ".") -> bool:
                 # Create new task
                 if db_manager.create_task(task_dict):
                     saved_count += 1
-        
+
         # Also generate individual task files
         generate_individual_task_files(tasks, project_root)
-        
+
         logger.info(f"Saved {saved_count}/{len(tasks)} tasks to SQLite database")
         return saved_count == len(tasks)
-        
+
     except Exception as e:
         logger.error(f"Failed to save tasks to database: {e}")
         # Fall back to JSON saving if database fails
@@ -357,10 +361,10 @@ def _save_tasks_to_json_fallback(tasks: List[Task], project_root: str = ".") -> 
             json.dump(json_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"Saved {len(tasks)} tasks to JSON fallback: {tasks_file}")
-        
+
         # Also generate individual task files
         generate_individual_task_files(tasks, project_root)
-        
+
         return True
 
     except Exception as e:
@@ -570,7 +574,9 @@ def get_tasks_statistics(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     # Calculate averages
     complexity_scores = [
-        task.get("complexity_score") for task in tasks if task.get("complexity_score") is not None
+        task.get("complexity_score")
+        for task in tasks
+        if task.get("complexity_score") is not None
     ]
     if complexity_scores:
         stats["avg_complexity"] = sum(complexity_scores) / len(complexity_scores)

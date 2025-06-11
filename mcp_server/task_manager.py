@@ -26,8 +26,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("PyTaskAI MCP Server")
 
 
-@mcp.tool()
-def list_tasks_tool(
+def _list_tasks_internal(
     project_root: str,
     status_filter: Optional[str] = None,
     priority_filter: Optional[str] = None,
@@ -35,20 +34,7 @@ def list_tasks_tool(
     include_subtasks: bool = True,
     include_stats: bool = False,
 ) -> Dict[str, Any]:
-    """
-    Lista tutti i task del progetto con filtri opzionali.
-
-    Args:
-        project_root: Path assoluto alla directory del progetto
-        status_filter: Filtra per status (pending, in-progress, done, cancelled)
-        priority_filter: Filtra per priorità (highest, high, medium, low, lowest)
-        type_filter: Filtra per tipo (task, bug, feature, enhancement, research, documentation)
-        include_subtasks: Includi i subtask nella risposta
-        include_stats: Includi statistiche del progetto
-
-    Returns:
-        Dict contenente lista task e metadati
-    """
+    """Internal function for listing tasks (without MCP decorator)"""
     try:
         logger.info(f"Loading tasks from project: {project_root}")
 
@@ -57,6 +43,7 @@ def list_tasks_tool(
 
         # Load tasks using database manager
         from .database import get_db_manager
+
         db_manager = get_db_manager(project_root)
         tasks = db_manager.get_all_tasks(include_subtasks=include_subtasks)
 
@@ -100,30 +87,59 @@ def list_tasks_tool(
             "project_root": project_root,
         }
 
-        # Add statistics if requested
-        # if include_stats:
-        #     all_tasks = load_tasks(project_root)
-        #     stats = get_tasks_statistics(all_tasks)
-        #     result["statistics"] = stats
+        # Add stats if requested
+        if include_stats:
+            try:
+                stats = get_tasks_statistics(tasks)
+                result["statistics"] = stats
+            except Exception as e:
+                logger.warning(f"Failed to get task statistics: {e}")
+                result["statistics"] = {}
 
         logger.info(f"Successfully loaded {len(tasks)} tasks")
         return result
 
     except Exception as e:
-        import traceback
-        full_traceback = traceback.format_exc()
         logger.error(f"Error loading tasks: {str(e)}")
-        logger.error(f"Full traceback: {full_traceback}")
-        
-        # Also print to see in MCP response
-        error_msg = f"Failed to load tasks: {str(e)}\nTraceback: {full_traceback}"
-        
         return {
-            "error": error_msg,
+            "error": f"Failed to load tasks: {str(e)}",
             "tasks": [],
             "total_count": 0,
             "project_root": project_root,
         }
+
+
+@mcp.tool()
+def list_tasks_tool(
+    project_root: str,
+    status_filter: Optional[str] = None,
+    priority_filter: Optional[str] = None,
+    type_filter: Optional[str] = None,
+    include_subtasks: bool = True,
+    include_stats: bool = False,
+) -> Dict[str, Any]:
+    """
+    Lista tutti i task del progetto con filtri opzionali.
+
+    Args:
+        project_root: Path assoluto alla directory del progetto
+        status_filter: Filtra per status (pending, in-progress, done, cancelled)
+        priority_filter: Filtra per priorità (highest, high, medium, low, lowest)
+        type_filter: Filtra per tipo (task, bug, feature, enhancement, research, documentation)
+        include_subtasks: Includi i subtask nella risposta
+        include_stats: Includi statistiche del progetto
+
+    Returns:
+        Dict contenente lista task e metadati
+    """
+    return _list_tasks_internal(
+        project_root=project_root,
+        status_filter=status_filter,
+        priority_filter=priority_filter,
+        type_filter=type_filter,
+        include_subtasks=include_subtasks,
+        include_stats=include_stats,
+    )
 
 
 @mcp.tool()
@@ -145,7 +161,7 @@ def get_task_tool(
         logger.info(f"Getting task {task_id} from project: {project_root}")
 
         data = load_tasks(project_root)
-        
+
         if not data:
             return {
                 "error": "No tasks file found",
@@ -179,12 +195,15 @@ def get_task_tool(
 
     except Exception as e:
         import traceback
+
         full_traceback = traceback.format_exc()
         logger.error(f"Error getting task {task_id}: {str(e)}")
         logger.error(f"Full traceback: {full_traceback}")
-        
-        error_msg = f"Failed to get task {task_id}: {str(e)}\nTraceback: {full_traceback}"
-        
+
+        error_msg = (
+            f"Failed to get task {task_id}: {str(e)}\nTraceback: {full_traceback}"
+        )
+
         return {
             "error": error_msg,
             "task": None,
@@ -217,16 +236,16 @@ def get_next_task_tool(
                 "project_root": project_root,
             }
 
-        tasks = data  # data is already a list of task dictionaries
+        tasks = data  # data is a list of Task objects
 
         # Find pending tasks
-        pending_tasks = [t for t in tasks if t.get("status") == "pending"]
+        pending_tasks = [t for t in tasks if t.status == "pending"]
 
         if not pending_tasks:
             return {
                 "message": "No pending tasks found",
                 "next_task": None,
-                "completed_tasks": len([t for t in tasks if t.get("status") == "done"]),
+                "completed_tasks": len([t for t in tasks if t.status == "done"]),
                 "project_root": project_root,
             }
 
@@ -235,19 +254,19 @@ def get_next_task_tool(
             priority_order = {"high": 3, "medium": 2, "low": 1}
             pending_tasks.sort(
                 key=lambda x: (
-                    priority_order.get(x.get("priority", "medium"), 2),
-                    x.get("id", 0),
+                    priority_order.get(x.priority or "medium", 2),
+                    x.id or 0,
                 ),
                 reverse=True,
             )
             next_task = pending_tasks[0]
         else:
             # Find tasks with no unfulfilled dependencies
-            done_task_ids = {t.get("id") for t in tasks if t.get("status") == "done"}
+            done_task_ids = {t.id for t in tasks if t.status == "done"}
 
             available_tasks = []
             for task in pending_tasks:
-                dependencies = task.get("dependencies", [])
+                dependencies = task.dependencies or []
                 if not dependencies or all(
                     dep_id in done_task_ids for dep_id in dependencies
                 ):
@@ -265,20 +284,33 @@ def get_next_task_tool(
             priority_order = {"high": 3, "medium": 2, "low": 1}
             available_tasks.sort(
                 key=lambda x: (
-                    priority_order.get(x.get("priority", "medium"), 2),
-                    x.get("id", 0),
+                    priority_order.get(x.priority or "medium", 2),
+                    x.id or 0,
                 ),
                 reverse=True,
             )
             next_task = available_tasks[0]
 
-        logger.info(
-            f"Next task selected: {next_task.get('id')} - {next_task.get('title')}"
+        logger.info(f"Next task selected: {next_task.id} - {next_task.title}")
+
+        # Convert Task object to dict for JSON serialization
+        next_task_dict = (
+            next_task.dict()
+            if hasattr(next_task, "dict")
+            else {
+                "id": next_task.id,
+                "title": next_task.title,
+                "description": next_task.description,
+                "status": next_task.status,
+                "priority": next_task.priority,
+                "type": next_task.type,
+            }
         )
+
         return {
-            "next_task": next_task,
+            "next_task": next_task_dict,
             "available_tasks_count": len(pending_tasks),
-            "recommendation": f"Task {next_task.get('id')}: {next_task.get('title')}",
+            "recommendation": f"Task {next_task.id}: {next_task.title}",
             "project_root": project_root,
         }
 
@@ -1116,6 +1148,7 @@ def set_task_status_tool(
 
         # Get database manager
         from .database import get_db_manager
+
         db_manager = get_db_manager(project_root)
         task_id = int(task_id)
 
@@ -1135,7 +1168,7 @@ def set_task_status_tool(
         # Handle subtask update
         if subtask_id is not None:
             subtask_id = int(subtask_id)
-            
+
             # Find the subtask to update
             subtask_found = False
             for subtask in target_task.get("subtasks", []):
@@ -1152,12 +1185,12 @@ def set_task_status_tool(
                     "subtask_id": subtask_id,
                     "project_root": project_root,
                 }
-            
+
             # Update subtask using database manager
             update_data = {"status": new_status}
             if update_timestamp:
                 update_data["updated_at"] = datetime.now()
-            
+
             updated_task = db_manager.update_subtask(task_id, subtask_id, update_data)
             if not updated_task:
                 return {
@@ -1166,15 +1199,15 @@ def set_task_status_tool(
                     "subtask_id": subtask_id,
                     "project_root": project_root,
                 }
-                
+
         else:
             # Update main task
             old_status = target_task.get("status")
-            
+
             update_data = {"status": new_status}
             if update_timestamp:
                 update_data["updated_at"] = datetime.now()
-            
+
             updated_task = db_manager.update_task(task_id, update_data)
             if not updated_task:
                 return {
@@ -1203,9 +1236,9 @@ def set_task_status_tool(
 
         # Add task context to response
         task_context = {
-            "title": target_task.title,
-            "description": target_task.description,
-            "priority": target_task.priority,
+            "title": target_task.get("title"),
+            "description": target_task.get("description"),
+            "priority": target_task.get("priority"),
         }
         result["task_context"] = task_context
 
@@ -1264,7 +1297,7 @@ async def add_task_tool(
 ) -> Dict[str, Any]:
     """
     Aggiunge un nuovo task principale utilizzando AI (LiteLLM) con supporto ricerca e best practices.
-    
+
     Supporta sia task generici che bug tracking con campi specifici per debugging.
 
     Args:
@@ -1312,7 +1345,14 @@ async def add_task_tool(
                 "project_root": project_root,
             }
 
-        valid_task_types = ["task", "bug", "feature", "enhancement", "research", "documentation"]
+        valid_task_types = [
+            "task",
+            "bug",
+            "feature",
+            "enhancement",
+            "research",
+            "documentation",
+        ]
         if task_type not in valid_task_types:
             return {
                 "error": f"Invalid task_type: {task_type}. Valid types: {valid_task_types}",
@@ -1530,17 +1570,19 @@ async def add_task_tool(
             "attachments": [],
             "related_tests": parsed_related_tests,
         }
-        
+
         # Add bug-specific fields if it's a bug
         if task_type == "bug":
-            new_task.update({
-                "severity": severity,
-                "steps_to_reproduce": steps_to_reproduce,
-                "expected_result": expected_result,
-                "actual_result": actual_result,
-                "environment": environment,
-            })
-        
+            new_task.update(
+                {
+                    "severity": severity,
+                    "steps_to_reproduce": steps_to_reproduce,
+                    "expected_result": expected_result,
+                    "actual_result": actual_result,
+                    "environment": environment,
+                }
+            )
+
         # Add test coverage fields if specified
         if target_test_coverage is not None:
             new_task["target_test_coverage"] = target_test_coverage
@@ -1618,6 +1660,7 @@ async def add_task_tool(
     except Exception as e:
         logger.error(f"Error creating task: {str(e)}")
         import traceback
+
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return {
             "error": f"Failed to create task: {str(e)}",
@@ -1639,10 +1682,10 @@ def update_task_test_coverage_tool(
 ) -> Dict[str, Any]:
     """
     Aggiorna i dati di copertura test per un task specifico.
-    
+
     Questo tool dovrebbe essere usato dall'agente di coding dopo aver eseguito i test,
     per riportare i risultati e aggiornare lo stato del task.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         task_id: ID del task da aggiornare
@@ -1652,13 +1695,13 @@ def update_task_test_coverage_tool(
         tests_passed: Se tutti i test sono passati
         total_tests: Numero totale di test eseguiti
         failed_tests: Numero di test falliti
-    
+
     Returns:
         Dict contenente conferma dell'aggiornamento e stato del task
     """
     try:
         logger.info(f"Updating test coverage for task {task_id}")
-        
+
         # Load tasks
         data = load_tasks(project_root)
         if not data:
@@ -1667,10 +1710,12 @@ def update_task_test_coverage_tool(
                 "project_root": project_root,
             }
 
-        tasks = [task.model_dump() if hasattr(task, 'model_dump') else task for task in data]
+        tasks = [
+            task.model_dump() if hasattr(task, "model_dump") else task for task in data
+        ]
         task = None
         task_index = None
-        
+
         for i, t in enumerate(tasks):
             if t.get("id") == task_id:
                 task = t
@@ -1686,7 +1731,7 @@ def update_task_test_coverage_tool(
         # Update test coverage fields
         now = datetime.now().isoformat()
         updated_fields = []
-        
+
         if achieved_coverage is not None:
             if not (0 <= achieved_coverage <= 100):
                 return {
@@ -1695,42 +1740,42 @@ def update_task_test_coverage_tool(
                 }
             task["achieved_test_coverage"] = achieved_coverage
             updated_fields.append("achieved_test_coverage")
-        
+
         if test_report_url is not None:
             task["test_report_url"] = test_report_url
             updated_fields.append("test_report_url")
-        
+
         if test_results_summary is not None:
             if "test_metadata" not in task:
                 task["test_metadata"] = {}
             task["test_metadata"]["results_summary"] = test_results_summary
             updated_fields.append("test_results_summary")
-        
+
         if tests_passed is not None:
             if "test_metadata" not in task:
                 task["test_metadata"] = {}
             task["test_metadata"]["tests_passed"] = tests_passed
             updated_fields.append("tests_passed")
-        
+
         if total_tests is not None:
             if "test_metadata" not in task:
                 task["test_metadata"] = {}
             task["test_metadata"]["total_tests"] = total_tests
             updated_fields.append("total_tests")
-        
+
         if failed_tests is not None:
             if "test_metadata" not in task:
                 task["test_metadata"] = {}
             task["test_metadata"]["failed_tests"] = failed_tests
             updated_fields.append("failed_tests")
-        
+
         # Update timestamp
         task["updated_at"] = now
-        
+
         # Check if target coverage is met
         target_coverage = task.get("target_test_coverage")
         coverage_status = "not_measured"
-        
+
         if achieved_coverage is not None:
             if target_coverage is not None:
                 if achieved_coverage >= target_coverage:
@@ -1739,27 +1784,30 @@ def update_task_test_coverage_tool(
                     coverage_status = "target_not_met"
             else:
                 coverage_status = "measured"
-        
+
         # Save updated tasks
         from shared.models import Task
+
         updated_tasks = []
         for t in tasks:
             try:
                 updated_tasks.append(Task(**t))
             except Exception as e:
-                logger.warning(f"Failed to convert task {t.get('id')} to Task object: {e}")
+                logger.warning(
+                    f"Failed to convert task {t.get('id')} to Task object: {e}"
+                )
                 updated_tasks.append(t)
-        
+
         success = save_tasks(project_root, updated_tasks)
-        
+
         if not success:
             return {
                 "error": "Failed to save updated task",
                 "project_root": project_root,
             }
-        
+
         logger.info(f"Successfully updated test coverage for task {task_id}")
-        
+
         return {
             "success": True,
             "message": f"Successfully updated test coverage for task {task_id}",
@@ -1771,7 +1819,7 @@ def update_task_test_coverage_tool(
             "timestamp": now,
             "project_root": project_root,
         }
-        
+
     except Exception as e:
         logger.error(f"Error updating test coverage: {str(e)}")
         return {
@@ -1796,10 +1844,10 @@ async def report_bug_tool(
 ) -> Dict[str, Any]:
     """
     Strumento dedicato per la segnalazione rapida di bug.
-    
+
     Semplifica il processo di creazione di bug report con campi pre-configurati
     e validazione specifica per bug tracking.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         title: Titolo breve del bug
@@ -1811,13 +1859,13 @@ async def report_bug_tool(
         actual_result: Comportamento osservato
         environment: Ambiente dove si verifica il bug
         related_task_id: ID del task correlato (opzionale)
-    
+
     Returns:
         Dict contenente il bug report creato e metadati
     """
     try:
         logger.info(f"Creating bug report: {title[:50]}...")
-        
+
         # Validate severity
         valid_severities = ["critical", "high", "medium", "low"]
         if severity not in valid_severities:
@@ -1825,7 +1873,7 @@ async def report_bug_tool(
                 "error": f"Invalid severity: {severity}. Valid severities: {valid_severities}",
                 "project_root": project_root,
             }
-        
+
         # Validate priority
         valid_priorities = ["highest", "high", "medium", "low", "lowest"]
         if priority not in valid_priorities:
@@ -1833,29 +1881,29 @@ async def report_bug_tool(
                 "error": f"Invalid priority: {priority}. Valid priorities: {valid_priorities}",
                 "project_root": project_root,
             }
-        
+
         # Enhanced description for bug reports
         enhanced_description = description
-        
+
         if steps_to_reproduce:
             enhanced_description += f"\n\n**Steps to Reproduce:**\n{steps_to_reproduce}"
-        
+
         if expected_result:
             enhanced_description += f"\n\n**Expected Result:**\n{expected_result}"
-        
+
         if actual_result:
             enhanced_description += f"\n\n**Actual Result:**\n{actual_result}"
-        
+
         if environment:
             enhanced_description += f"\n\n**Environment:**\n{environment}"
-        
+
         if related_task_id:
             enhanced_description += f"\n\n**Related Task:** #{related_task_id}"
-        
+
         # Set dependencies if related task provided
         dependencies = [related_task_id] if related_task_id else []
         dependencies_str = str(related_task_id) if related_task_id else None
-        
+
         # Create bug using add_task_tool
         result = await add_task_tool(
             project_root=project_root,
@@ -1870,17 +1918,17 @@ async def report_bug_tool(
             dependencies=dependencies_str,
             use_research=False,  # Bug reports typically don't need research
         )
-        
+
         if result.get("error"):
             return {
                 "error": f"Failed to create bug report: {result['error']}",
                 "project_root": project_root,
             }
-        
+
         # Enhance response with bug-specific information
         bug_id = result.get("task_id")
         bug_data = result.get("task", {})
-        
+
         # Add bug report metadata
         bug_report_info = {
             "bug_id": bug_id,
@@ -1893,24 +1941,28 @@ async def report_bug_tool(
             "has_environment_info": bool(environment),
             "is_related_to_task": bool(related_task_id),
         }
-        
+
         # Generate bug tracking recommendations
         recommendations = []
-        
+
         if severity in ["critical", "high"]:
             recommendations.append("High severity bug - consider immediate attention")
-        
+
         if not steps_to_reproduce:
-            recommendations.append("Consider adding reproduction steps for faster debugging")
-        
+            recommendations.append(
+                "Consider adding reproduction steps for faster debugging"
+            )
+
         if not environment:
             recommendations.append("Add environment details to help with debugging")
-        
+
         if not expected_result or not actual_result:
-            recommendations.append("Clarify expected vs actual behavior for better understanding")
-        
+            recommendations.append(
+                "Clarify expected vs actual behavior for better understanding"
+            )
+
         logger.info(f"Bug report created successfully: #{bug_id}")
-        
+
         return {
             "success": True,
             "message": f"Bug report created successfully: #{bug_id}",
@@ -1919,7 +1971,7 @@ async def report_bug_tool(
             "task": bug_data,
             "project_root": project_root,
         }
-        
+
     except Exception as e:
         logger.error(f"Error creating bug report: {str(e)}")
         return {
@@ -1931,108 +1983,108 @@ async def report_bug_tool(
 
 @mcp.tool()
 def get_bug_statistics_tool(
-    project_root: str,
-    include_resolved: bool = False,
-    group_by: str = "severity"
+    project_root: str, include_resolved: bool = False, group_by: str = "severity"
 ) -> Dict[str, Any]:
     """
     Ottieni statistiche sui bug del progetto.
-    
+
     Args:
         project_root: Path assoluto alla directory del progetto
         include_resolved: Include bug risolti nelle statistiche
         group_by: Raggruppa per (severity, priority, status, environment)
-    
+
     Returns:
         Dict contenente statistiche dettagliate sui bug
     """
     try:
         logger.info(f"Generating bug statistics for project: {project_root}")
-        
+
         # Load all tasks
         result = list_tasks_tool(
-            project_root=project_root,
-            type_filter="bug",
-            include_subtasks=False
+            project_root=project_root, type_filter="bug", include_subtasks=False
         )
-        
+
         if result.get("error"):
             return {
                 "error": f"Failed to load bugs: {result['error']}",
                 "project_root": project_root,
             }
-        
+
         bugs = result.get("tasks", [])
-        
+
         # Filter out resolved bugs if requested
         if not include_resolved:
             bugs = [bug for bug in bugs if bug.get("status") != "done"]
-        
+
         # Calculate statistics
         total_bugs = len(bugs)
-        
+
         # Group by requested field
         grouped_stats = {}
         valid_group_fields = ["severity", "priority", "status", "environment"]
-        
+
         if group_by not in valid_group_fields:
             group_by = "severity"
-        
+
         for bug in bugs:
             group_value = bug.get(group_by, "unknown")
             if group_value not in grouped_stats:
-                grouped_stats[group_value] = {
-                    "count": 0,
-                    "percentage": 0,
-                    "bugs": []
-                }
+                grouped_stats[group_value] = {"count": 0, "percentage": 0, "bugs": []}
             grouped_stats[group_value]["count"] += 1
-            grouped_stats[group_value]["bugs"].append({
-                "id": bug.get("id"),
-                "title": bug.get("title"),
-                "status": bug.get("status"),
-                "severity": bug.get("severity"),
-                "created_at": bug.get("created_at")
-            })
-        
+            grouped_stats[group_value]["bugs"].append(
+                {
+                    "id": bug.get("id"),
+                    "title": bug.get("title"),
+                    "status": bug.get("status"),
+                    "severity": bug.get("severity"),
+                    "created_at": bug.get("created_at"),
+                }
+            )
+
         # Calculate percentages
         for group_value, stats in grouped_stats.items():
             stats["percentage"] = (stats["count"] / max(total_bugs, 1)) * 100
-        
+
         # Calculate severity distribution (always include this)
         severity_distribution = {
             "critical": 0,
             "high": 0,
             "medium": 0,
             "low": 0,
-            "unknown": 0
+            "unknown": 0,
         }
-        
+
         for bug in bugs:
             severity = bug.get("severity", "unknown")
             severity_distribution[severity] = severity_distribution.get(severity, 0) + 1
-        
+
         # Calculate status distribution
         status_distribution = {}
         for bug in bugs:
             status = bug.get("status", "unknown")
             status_distribution[status] = status_distribution.get(status, 0) + 1
-        
+
         # Find oldest unresolved bugs
-        unresolved_bugs = [bug for bug in bugs if bug.get("status") not in ["done", "cancelled"]]
+        unresolved_bugs = [
+            bug for bug in bugs if bug.get("status") not in ["done", "cancelled"]
+        ]
         oldest_bugs = sorted(unresolved_bugs, key=lambda x: x.get("created_at", ""))[:5]
-        
+
         # Calculate metrics
-        critical_high_count = severity_distribution.get("critical", 0) + severity_distribution.get("high", 0)
+        critical_high_count = severity_distribution.get(
+            "critical", 0
+        ) + severity_distribution.get("high", 0)
         resolution_rate = 0
         if include_resolved:
-            all_bugs_result = list_tasks_tool(project_root=project_root, type_filter="bug")
+            all_bugs_result = list_tasks_tool(
+                project_root=project_root, type_filter="bug"
+            )
             all_bugs = all_bugs_result.get("tasks", [])
             resolved_bugs = len([b for b in all_bugs if b.get("status") == "done"])
             resolution_rate = (resolved_bugs / max(len(all_bugs), 1)) * 100
-        
+
         logger.info(f"Bug statistics generated: {total_bugs} bugs analyzed")
-        
+
         return {
             "success": True,
             "statistics": {
@@ -2049,9 +2101,9 @@ def get_bug_statistics_tool(
                 "include_resolved": include_resolved,
                 "generated_at": datetime.now().isoformat(),
                 "project_root": project_root,
-            }
+            },
         }
-        
+
     except Exception as e:
         logger.error(f"Error generating bug statistics: {str(e)}")
         return {
