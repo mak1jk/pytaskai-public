@@ -55,18 +55,18 @@ def list_tasks_tool(
         # Ensure directory structure exists
         ensure_directories_exist(project_root)
 
-        # Load tasks from tasks.json
-        data = load_tasks(project_root)
+        # Load tasks using database manager
+        from .database import get_db_manager
+        db_manager = get_db_manager(project_root)
+        tasks = db_manager.get_all_tasks(include_subtasks=include_subtasks)
 
-        if not data:
+        if not tasks:
             return {
                 "tasks": [],
                 "total_count": 0,
-                "message": "No tasks found or tasks.json does not exist",
+                "message": "No tasks found in database",
                 "project_root": project_root,
             }
-
-        tasks = data.get("tasks", [])
 
         # Apply status filter
         if status_filter:
@@ -82,6 +82,8 @@ def list_tasks_tool(
 
         # Filter subtasks if requested
         if not include_subtasks:
+            # Make a copy to avoid modifying original data
+            tasks = [dict(task) for task in tasks]
             for task in tasks:
                 if "subtasks" in task:
                     del task["subtasks"]
@@ -99,18 +101,25 @@ def list_tasks_tool(
         }
 
         # Add statistics if requested
-        if include_stats:
-            all_tasks = load_tasks(project_root).get("tasks", [])
-            stats = get_tasks_statistics(all_tasks)
-            result["statistics"] = stats
+        # if include_stats:
+        #     all_tasks = load_tasks(project_root)
+        #     stats = get_tasks_statistics(all_tasks)
+        #     result["statistics"] = stats
 
         logger.info(f"Successfully loaded {len(tasks)} tasks")
         return result
 
     except Exception as e:
+        import traceback
+        full_traceback = traceback.format_exc()
         logger.error(f"Error loading tasks: {str(e)}")
+        logger.error(f"Full traceback: {full_traceback}")
+        
+        # Also print to see in MCP response
+        error_msg = f"Failed to load tasks: {str(e)}\nTraceback: {full_traceback}"
+        
         return {
-            "error": f"Failed to load tasks: {str(e)}",
+            "error": error_msg,
             "tasks": [],
             "total_count": 0,
             "project_root": project_root,
@@ -136,6 +145,7 @@ def get_task_tool(
         logger.info(f"Getting task {task_id} from project: {project_root}")
 
         data = load_tasks(project_root)
+        
         if not data:
             return {
                 "error": "No tasks file found",
@@ -143,13 +153,13 @@ def get_task_tool(
                 "project_root": project_root,
             }
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         task_id = int(task_id)
 
         # Find the task
         task = None
         for t in tasks:
-            if t.get("id") == task_id:
+            if isinstance(t, dict) and t.get("id") == task_id:
                 task = t.copy()
                 break
 
@@ -168,9 +178,15 @@ def get_task_tool(
         return {"task": task, "task_id": task_id, "project_root": project_root}
 
     except Exception as e:
+        import traceback
+        full_traceback = traceback.format_exc()
         logger.error(f"Error getting task {task_id}: {str(e)}")
+        logger.error(f"Full traceback: {full_traceback}")
+        
+        error_msg = f"Failed to get task {task_id}: {str(e)}\nTraceback: {full_traceback}"
+        
         return {
-            "error": f"Failed to get task {task_id}: {str(e)}",
+            "error": error_msg,
             "task": None,
             "project_root": project_root,
         }
@@ -201,7 +217,7 @@ def get_next_task_tool(
                 "project_root": project_root,
             }
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
 
         # Find pending tasks
         pending_tasks = [t for t in tasks if t.get("status") == "pending"]
@@ -1098,28 +1114,13 @@ def set_task_status_tool(
                 "project_root": project_root,
             }
 
-        # Load tasks data
-        data = load_tasks(project_root)
-        if not data:
-            return {
-                "error": "No tasks file found",
-                "task_id": task_id,
-                "project_root": project_root,
-            }
-
-        tasks = data.get("tasks", [])
+        # Get database manager
+        from .database import get_db_manager
+        db_manager = get_db_manager(project_root)
         task_id = int(task_id)
 
-        # Find the target task
-        target_task = None
-        task_index = None
-
-        for i, task in enumerate(tasks):
-            if task.get("id") == task_id:
-                target_task = task
-                task_index = i
-                break
-
+        # Get the target task
+        target_task = db_manager.get_task_by_id(task_id)
         if not target_task:
             return {
                 "error": f"Task with ID {task_id} not found",
@@ -1134,17 +1135,12 @@ def set_task_status_tool(
         # Handle subtask update
         if subtask_id is not None:
             subtask_id = int(subtask_id)
-            subtasks = target_task.get("subtasks", [])
-
+            
+            # Find the subtask to update
             subtask_found = False
-            for j, subtask in enumerate(subtasks):
+            for subtask in target_task.get("subtasks", []):
                 if subtask.get("id") == subtask_id:
-                    old_status = subtask.get("status", "unknown")
-                    subtask["status"] = new_status
-
-                    if update_timestamp:
-                        subtask["updated_at"] = datetime.now().isoformat()
-
+                    old_status = subtask.get("status")
                     subtask_found = True
                     update_target = f"subtask {subtask_id}"
                     break
@@ -1156,28 +1152,40 @@ def set_task_status_tool(
                     "subtask_id": subtask_id,
                     "project_root": project_root,
                 }
+            
+            # Update subtask using database manager
+            update_data = {"status": new_status}
+            if update_timestamp:
+                update_data["updated_at"] = datetime.now()
+            
+            updated_task = db_manager.update_subtask(task_id, subtask_id, update_data)
+            if not updated_task:
+                return {
+                    "error": f"Failed to update subtask {subtask_id}",
+                    "task_id": task_id,
+                    "subtask_id": subtask_id,
+                    "project_root": project_root,
+                }
+                
         else:
             # Update main task
-            old_status = target_task.get("status", "unknown")
-            target_task["status"] = new_status
-
+            old_status = target_task.get("status")
+            
+            update_data = {"status": new_status}
             if update_timestamp:
-                target_task["updated_at"] = datetime.now().isoformat()
+                update_data["updated_at"] = datetime.now()
+            
+            updated_task = db_manager.update_task(task_id, update_data)
+            if not updated_task:
+                return {
+                    "error": f"Failed to update task {task_id}",
+                    "task_id": task_id,
+                    "project_root": project_root,
+                }
 
-        # Save updated tasks
-        try:
-            save_tasks(project_root, data)
-            logger.info(
-                f"Successfully updated {update_target} status from '{old_status}' to '{new_status}'"
-            )
-        except Exception as save_error:
-            logger.error(f"Failed to save tasks: {save_error}")
-            return {
-                "error": f"Failed to save task updates: {str(save_error)}",
-                "task_id": task_id,
-                "subtask_id": subtask_id,
-                "project_root": project_root,
-            }
+        logger.info(
+            f"Successfully updated {update_target} status from '{old_status}' to '{new_status}'"
+        )
 
         # Prepare success response
         result = {
@@ -1195,9 +1203,9 @@ def set_task_status_tool(
 
         # Add task context to response
         task_context = {
-            "title": target_task.get("title", "Unknown"),
-            "description": target_task.get("description", ""),
-            "priority": target_task.get("priority", "medium"),
+            "title": target_task.title,
+            "description": target_task.description,
+            "priority": target_task.priority,
         }
         result["task_context"] = task_context
 
@@ -1334,7 +1342,7 @@ async def add_task_tool(
 
         # Convert Task objects to dict format for processing
         if existing_task_objects:
-            existing_tasks = [task.dict() for task in existing_task_objects]
+            existing_tasks = [task.model_dump() for task in existing_task_objects]
             data = {
                 "version": "1.0",
                 "tasks": existing_tasks,
@@ -1516,8 +1524,8 @@ async def add_task_tool(
             "test_strategy": task_data.get("test_strategy", ""),
             "estimated_hours": task_data.get("estimated_hours", 0.0),
             "complexity_score": task_data.get("complexity_score", 5),
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
             "subtasks": [],
             "attachments": [],
             "related_tests": parsed_related_tests,
@@ -1609,6 +1617,8 @@ async def add_task_tool(
 
     except Exception as e:
         logger.error(f"Error creating task: {str(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return {
             "error": f"Failed to create task: {str(e)}",
             "prompt": prompt,
@@ -1657,7 +1667,7 @@ def update_task_test_coverage_tool(
                 "project_root": project_root,
             }
 
-        tasks = [task.dict() if hasattr(task, 'dict') else task for task in data]
+        tasks = [task.model_dump() if hasattr(task, 'model_dump') else task for task in data]
         task = None
         task_index = None
         
@@ -2088,7 +2098,7 @@ async def expand_task_tool(
                 "project_root": project_root,
             }
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         task_id = int(task_id)
 
         # Find the target task
@@ -2408,7 +2418,7 @@ def next_task_tool(
         if not data:
             return {"error": "No tasks file found", "project_root": project_root}
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         if not tasks:
             return {"error": "No tasks available", "project_root": project_root}
 
@@ -2590,7 +2600,7 @@ def analyze_complexity_tool(
         if not data:
             return {"error": "No tasks file found", "project_root": project_root}
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         if not tasks:
             return {
                 "error": "No tasks available for analysis",
@@ -2957,7 +2967,7 @@ def update_subtask_tool(
         if not data:
             return {"error": "No tasks file found", "project_root": project_root}
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         task_id = int(task_id)
         subtask_id = int(subtask_id)
 
@@ -3316,7 +3326,7 @@ def add_dependency_tool(
                 "project_root": project_root,
             }
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         task_id = int(task_id)
         dependency_id = int(dependency_id)
 
@@ -3482,7 +3492,7 @@ def remove_dependency_tool(
                 "project_root": project_root,
             }
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         task_id = int(task_id)
         dependency_id = int(dependency_id)
 
@@ -3603,7 +3613,7 @@ def validate_dependencies_tool(
         if not data:
             return {"error": "No tasks file found", "project_root": project_root}
 
-        tasks = data.get("tasks", [])
+        tasks = data  # data is already a list of task dictionaries
         task_ids = {t.get("id") for t in tasks}
 
         # Validation results

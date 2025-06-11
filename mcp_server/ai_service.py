@@ -302,21 +302,42 @@ class AIService:
                 {"role": "user", "content": user_prompt},
             ]
 
-            # Prepare LiteLLM arguments
+            # Remove custom parameters that shouldn't be passed to LiteLLM
+            force_json = kwargs.pop("force_json", True)
+            
+            # Remove all known non-LiteLLM parameters
+            non_litellm_params = [
+                "mentioned_technologies", "topic_for_best_practices", "research_query", 
+                "prompt", "operation_type", "operation_context", "tool_name", "error_message"
+            ]
+            for param in non_litellm_params:
+                kwargs.pop(param, None)
+            
+            # Debug log remaining kwargs
+            if kwargs:
+                logger.debug(f"Remaining kwargs for LiteLLM: {list(kwargs.keys())}")
+            
+            # Prepare LiteLLM arguments - only use known safe parameters
             llm_args = {
                 "model": model_config.name,
                 "messages": messages,
                 "max_tokens": model_config.max_tokens,
                 "temperature": model_config.temperature,
                 "timeout": model_config.timeout,
-                **kwargs,
             }
+            
+            # Only add kwargs that are known to be safe for LiteLLM
+            safe_kwargs = ["stream", "stop", "top_p", "frequency_penalty", "presence_penalty"]
+            for key, value in kwargs.items():
+                if key in safe_kwargs:
+                    llm_args[key] = value
 
             # Add JSON format if supported
-            if model_config.supports_json and kwargs.get("force_json", True):
+            if model_config.supports_json and force_json:
                 llm_args["response_format"] = {"type": "json_object"}
 
             logger.info(f"Making AI call to {model_config.name}")
+            logger.debug(f"LiteLLM arguments: {llm_args}")
 
             # Make the call
             response = await litellm.acompletion(**llm_args)
@@ -482,7 +503,6 @@ class AIService:
                 user_prompt,
                 operation_type=OperationType.LTS_RESEARCH,
                 operation_context=f"LTS research for {len(technologies)} technologies: {', '.join(technologies[:3])}{'...' if len(technologies) > 3 else ''}",
-                force_json=True,
             )
 
             # Extract LTS versions from result
@@ -592,7 +612,6 @@ class AIService:
                 user_prompt,
                 operation_type=OperationType.BEST_PRACTICES,
                 operation_context=f"Best practices research for: {topic}",
-                force_json=True,
             )
 
             # Extract best practices from result
@@ -642,6 +661,9 @@ class AIService:
         priority: str = "medium",
         dependencies: Optional[List[int]] = None,
         project_context: Optional[str] = None,
+        mentioned_technologies: Optional[List[str]] = None,
+        topic_for_best_practices: Optional[str] = None,
+        research_query: Optional[str] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -746,7 +768,6 @@ class AIService:
                 model_name,
                 "You are an expert project manager and software architect.",
                 task_prompt,
-                force_json=True,
             )
 
             # Enhance result with metadata

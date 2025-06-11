@@ -206,7 +206,37 @@ def find_subtask_by_id(
 
 
 def load_tasks(project_root: str = ".") -> List[Task]:
-    """Load tasks from the tasks.json file"""
+    """Load tasks from SQLite database"""
+    try:
+        from .database import get_db_manager
+        
+        # Get database manager
+        db_manager = get_db_manager(project_root)
+        
+        # Get all tasks as dictionaries
+        tasks_data = db_manager.get_all_tasks(include_subtasks=True)
+        
+        # Convert to Task objects
+        tasks = []
+        for task_data in tasks_data:
+            try:
+                task = Task(**task_data)
+                tasks.append(task)
+            except Exception as e:
+                logger.error(f"Failed to parse task {task_data.get('id', 'unknown')}: {e}")
+                continue
+        
+        logger.info(f"Loaded {len(tasks)} tasks from SQLite database")
+        return tasks
+        
+    except Exception as e:
+        logger.error(f"Failed to load tasks from database: {e}")
+        # Fall back to JSON if database fails
+        return _load_tasks_from_json_fallback(project_root)
+
+
+def _load_tasks_from_json_fallback(project_root: str = ".") -> List[Task]:
+    """Fallback function to load tasks from JSON file"""
     tasks_file = get_tasks_file_path(project_root)
 
     if not tasks_file.exists():
@@ -226,19 +256,17 @@ def load_tasks(project_root: str = ".") -> List[Task]:
             logger.error(f"Invalid tasks file format: {tasks_file}")
             return []
 
-        # Convert to Task objects
+        # Validate and return Task objects
         tasks = []
         for task_data in tasks_data:
             try:
                 task = Task(**task_data)
                 tasks.append(task)
             except Exception as e:
-                logger.error(
-                    f"Failed to parse task {task_data.get('id', 'unknown')}: {e}"
-                )
+                logger.error(f"Failed to parse task {task_data.get('id', 'unknown')}: {e}")
                 continue
 
-        logger.info(f"Loaded {len(tasks)} tasks from {tasks_file}")
+        logger.info(f"Loaded {len(tasks)} tasks from JSON fallback: {tasks_file}")
         return tasks
 
     except json.JSONDecodeError as e:
@@ -250,7 +278,47 @@ def load_tasks(project_root: str = ".") -> List[Task]:
 
 
 def save_tasks(tasks: List[Task], project_root: str = ".") -> bool:
-    """Save tasks to the tasks.json file"""
+    """Save tasks to SQLite database"""
+    try:
+        from .database import get_db_manager
+        
+        # Get database manager
+        db_manager = get_db_manager(project_root)
+        
+        # This function is mainly used for bulk updates, 
+        # but for individual operations we'll use the database methods directly
+        # For now, we'll handle it as individual updates/creates
+        
+        saved_count = 0
+        for task in tasks:
+            task_dict = task.model_dump()
+            
+            # Check if task exists
+            existing_task = db_manager.get_task_by_id(task.id)
+            
+            if existing_task:
+                # Update existing task
+                if db_manager.update_task(task.id, task_dict):
+                    saved_count += 1
+            else:
+                # Create new task
+                if db_manager.create_task(task_dict):
+                    saved_count += 1
+        
+        # Also generate individual task files
+        generate_individual_task_files(tasks, project_root)
+        
+        logger.info(f"Saved {saved_count}/{len(tasks)} tasks to SQLite database")
+        return saved_count == len(tasks)
+        
+    except Exception as e:
+        logger.error(f"Failed to save tasks to database: {e}")
+        # Fall back to JSON saving if database fails
+        return _save_tasks_to_json_fallback(tasks, project_root)
+
+
+def _save_tasks_to_json_fallback(tasks: List[Task], project_root: str = ".") -> bool:
+    """Fallback function to save tasks to JSON file"""
     ensure_directories_exist(project_root)
     tasks_file = get_tasks_file_path(project_root)
 
@@ -258,7 +326,7 @@ def save_tasks(tasks: List[Task], project_root: str = ".") -> bool:
         # Convert tasks to dictionaries
         tasks_data = []
         for task in tasks:
-            task_dict = task.dict()
+            task_dict = task.model_dump()
             # Ensure datetime objects are properly serialized
             for key, value in task_dict.items():
                 if isinstance(value, datetime):
@@ -288,11 +356,11 @@ def save_tasks(tasks: List[Task], project_root: str = ".") -> bool:
         with safe_file_write(tasks_file, make_backup=True) as f:
             json.dump(json_data, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"Saved {len(tasks)} tasks to {tasks_file}")
-
+        logger.info(f"Saved {len(tasks)} tasks to JSON fallback: {tasks_file}")
+        
         # Also generate individual task files
         generate_individual_task_files(tasks, project_root)
-
+        
         return True
 
     except Exception as e:
@@ -460,7 +528,7 @@ def validate_tasks_file(project_root: str = ".") -> Dict[str, Any]:
     return report
 
 
-def get_tasks_statistics(tasks: List[Task]) -> Dict[str, Any]:
+def get_tasks_statistics(tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Get statistics about the tasks list"""
     if not tasks:
         return {"total": 0}
@@ -480,33 +548,35 @@ def get_tasks_statistics(tasks: List[Task]) -> Dict[str, Any]:
     # Count by status and priority
     for task in tasks:
         # Status counts
-        status = task.status
+        status = task.get("status", "pending")
         stats["by_status"][status] = stats["by_status"].get(status, 0) + 1
 
         # Priority counts
-        priority = task.priority
+        priority = task.get("priority", "medium")
         stats["by_priority"][priority] = stats["by_priority"].get(priority, 0) + 1
 
         # Other statistics
-        if task.subtasks:
+        subtasks = task.get("subtasks", [])
+        if subtasks:
             stats["with_subtasks"] += 1
-            stats["total_subtasks"] += len(task.subtasks)
+            stats["total_subtasks"] += len(subtasks)
 
-        if task.dependencies:
+        dependencies = task.get("dependencies", [])
+        if dependencies:
             stats["with_dependencies"] += 1
 
-        if task.generated_by_ai:
+        if task.get("generated_by_ai", False):
             stats["ai_generated"] += 1
 
     # Calculate averages
     complexity_scores = [
-        task.complexity_score for task in tasks if task.complexity_score is not None
+        task.get("complexity_score") for task in tasks if task.get("complexity_score") is not None
     ]
     if complexity_scores:
         stats["avg_complexity"] = sum(complexity_scores) / len(complexity_scores)
 
     # Calculate completion percentage
-    done_tasks = stats["by_status"].get(TaskStatus.DONE, 0)
+    done_tasks = stats["by_status"].get("done", 0)
     stats["completion_percentage"] = (done_tasks / len(tasks)) * 100 if tasks else 0
 
     return stats
