@@ -1,0 +1,91 @@
+# PyTaskAI Secure Template Schemas
+# Validation schemas for prompt templates
+# Defines safe placeholder patterns and validation rules
+
+template_schemas:
+  add_task_template:
+    description: "Template for AI task generation prompts"
+    safe_placeholders:
+      - name: "user_prompt"
+        pattern: "^[a-zA-Z0-9\\s\\.,!?\\-_()\\[\\]]{1,2000}$"
+        description: "User task description - alphanumeric and basic punctuation only"
+      
+      - name: "priority"
+        pattern: "^(high|medium|low)$"
+        description: "Task priority level - enumerated values only"
+        
+      - name: "dependencies"
+        pattern: "^(\\d+(,\\s*\\d+)*)?$"
+        description: "Comma-separated task IDs - numbers only"
+        
+      - name: "project_context"
+        pattern: "^[a-zA-Z0-9\\s\\.,!?\\-_()\\[\\]]{0,1000}$"
+        description: "Project context - limited alphanumeric content"
+        
+      - name: "research_findings"
+        pattern: "^[a-zA-Z0-9\\s\\.,!?\\-_()\\[\\]:\\n*]{0,5000}$"
+        description: "Research findings - structured text only"
+
+    forbidden_patterns:
+      - pattern: "\\{\\{.*?\\}\\}"
+        reason: "Template injection attempt"
+      - pattern: "\\$\\{.*?\\}"
+        reason: "Variable substitution attempt"  
+      - pattern: "(?i)ignore\\s+previous"
+        reason: "Prompt override attempt"
+      - pattern: "(?i)system\\s+prompt"
+        reason: "System prompt extraction attempt"
+
+  research_template:
+    description: "Template for research prompt generation"
+    safe_placeholders:
+      - name: "technologies"
+        pattern: "^[a-zA-Z0-9\\.,\\s\\-_]{1,500}$"
+        description: "Technology list - alphanumeric and separators only"
+        
+      - name: "research_topic"
+        pattern: "^[a-zA-Z0-9\\s\\-_]{1,100}$"
+        description: "Research topic - simple text only"
+
+    forbidden_patterns:
+      - pattern: "https?:\\/\\/"
+        reason: "URL injection attempt"
+      - pattern: "(?i)curl|wget|fetch"
+        reason: "Network command attempt"
+
+validation_rules:
+  max_placeholder_length: 5000
+  max_total_template_length: 50000
+  
+  required_security_checks:
+    - "No script tags or JavaScript"
+    - "No system command patterns"
+    - "No credential extraction attempts"
+    - "No file path traversal patterns"
+    
+  safe_characters:
+    alphanumeric: "a-zA-Z0-9"
+    punctuation: "\\.,!?\\-_()\\[\\]:"
+    whitespace: "\\s\\n\\r\\t"
+    
+encoding_safety:
+  allowed_encodings: ["utf-8", "ascii"]
+  max_unicode_range: "\\u0000-\\u007F"  # ASCII only for maximum safety
+  
+security_levels:
+  strict:
+    - "Only alphanumeric and basic punctuation"
+    - "No template syntax allowed"
+    - "Maximum length limits enforced"
+    
+  moderate:
+    - "Limited special characters allowed"
+    - "Template syntax escaped"
+    - "Content scanning for threats"
+    
+  minimal:
+    - "Basic threat pattern detection"
+    - "Length limits only"
+
+version: "1.0"
+created: "2024-12-06"

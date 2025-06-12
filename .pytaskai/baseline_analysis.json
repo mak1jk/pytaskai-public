@@ -1,0 +1,309 @@
+{
+  "timestamp": "/Users/marcomacri/Desktop/cartella progetti github/pytaskai-public",
+  "module_map": {
+    "root": [
+      "run_streamlit.py",
+      "pytaskai_minimal.py",
+      "setup_cli.py",
+      "migrate_to_sqlite.py",
+      "pytaskai_cli.py",
+      "analyze_codebase.py"
+    ],
+    "frontend": [
+      "frontend/__init__.py",
+      "frontend/streamlit_app.py",
+      "frontend/components/__init__.py",
+      "frontend/components/bug_analytics.py"
+    ],
+    "tests": [
+      "tests/test_basic.py",
+      "tests/test_utils.py",
+      "tests/test_mcp_tools.py",
+      "tests/test_jira_integration.py",
+      "tests/__init__.py",
+      "tests/test_simple_functionality.py",
+      "tests/test_performance.py",
+      "tests/test_integration_workflows.py",
+      "tests/test_bug_tracking.py",
+      "tests/run_all_tests.py",
+      "tests/test_end_to_end_workflows.py"
+    ],
+    "shared": [
+      "shared/models.py",
+      "shared/__init__.py",
+      "shared/schemas.py",
+      "shared/jira_integration.py"
+    ],
+    "mcp_server": [
+      "mcp_server/ai_service.py",
+      "mcp_server/cache_manager.py",
+      "mcp_server/database.py",
+      "mcp_server/__init__.py",
+      "mcp_server/usage_tracker.py",
+      "mcp_server/utils.py",
+      "mcp_server/task_manager.py",
+      "mcp_server/__main__.py",
+      "mcp_server/claude_code_setup.py",
+      "mcp_server/prompts/json_schema_helpers.py",
+      "mcp_server/prompts/__init__.py",
+      "mcp_server/prompts/lts_research_prompt.py",
+      "mcp_server/prompts/best_practices_prompt.py",
+      "mcp_server/prompts/add_task_prompt.py",
+      "mcp_server/prompts/expand_task_prompt.py"
+    ]
+  },
+  "dependency_count": 16,
+  "external_dependencies": {
+    "typing": 26,
+    "datetime": 25,
+    "os": 23,
+    "json": 22,
+    "sys": 13,
+    "logging": 11,
+    "asyncio": 11,
+    "ai_service": 10,
+    "pathlib": 7,
+    "traceback": 6,
+    "tempfile": 6,
+    "enum": 6,
+    "re": 6,
+    "pytest": 5,
+    "time": 5,
+    "subprocess": 4,
+    "argparse": 4,
+    "unittest.mock": 4,
+    "dataclasses": 4,
+    "database": 4
+  },
+  "complexity_metrics": {
+    "total_files": 40,
+    "total_lines": 19774,
+    "total_functions": 380,
+    "total_classes": 127,
+    "file_metrics": {
+      "./run_streamlit.py": {
+        "lines": 65,
+        "functions": 1,
+        "classes": 0
+      },
+      "./pytaskai_minimal.py": {
+        "lines": 391,
+        "functions": 12,
+        "classes": 1
+      },
+      "./setup_cli.py": {
+        "lines": 375,
+        "functions": 8,
+        "classes": 0
+      },
+      "./migrate_to_sqlite.py": {
+        "lines": 64,
+        "functions": 1,
+        "classes": 0
+      },
+      "./pytaskai_cli.py": {
+        "lines": 981,
+        "functions": 29,
+        "classes": 3
+      },
+      "./analyze_codebase.py": {
+        "lines": 286,
+        "functions": 8,
+        "classes": 0
+      },
+      "./frontend/__init__.py": {
+        "lines": 2,
+        "functions": 0,
+        "classes": 0
+      },
+      "./frontend/streamlit_app.py": {
+        "lines": 686,
+        "functions": 17,
+        "classes": 0
+      },
+      "./frontend/components/__init__.py": {
+        "lines": 2,
+        "functions": 0,
+        "classes": 0
+      },
+      "./frontend/components/bug_analytics.py": {
+        "lines": 528,
+        "functions": 11,
+        "classes": 0
+      },
+      "./tests/test_basic.py": {
+        "lines": 32,
+        "functions": 2,
+        "classes": 0
+      },
+      "./tests/test_utils.py": {
+        "lines": 409,
+        "functions": 1,
+        "classes": 1
+      },
+      "./tests/test_mcp_tools.py": {
+        "lines": 543,
+        "functions": 25,
+        "classes": 6
+      },
+      "./tests/test_jira_integration.py": {
+        "lines": 548,
+        "functions": 26,
+        "classes": 5
+      },
+      "./tests/__init__.py": {
+        "lines": 2,
+        "functions": 0,
+        "classes": 0
+      },
+      "./tests/test_simple_functionality.py": {
+        "lines": 170,
+        "functions": 8,
+        "classes": 1
+      },
+      "./tests/test_performance.py": {
+        "lines": 550,
+        "functions": 12,
+        "classes": 4
+      },
+      "./tests/test_integration_workflows.py": {
+        "lines": 534,
+        "functions": 4,
+        "classes": 4
+      },
+      "./tests/test_bug_tracking.py": {
+        "lines": 253,
+        "functions": 8,
+        "classes": 1
+      },
+      "./tests/run_all_tests.py": {
+        "lines": 273,
+        "functions": 7,
+        "classes": 1
+      },
+      "./tests/test_end_to_end_workflows.py": {
+        "lines": 739,
+        "functions": 5,
+        "classes": 4
+      },
+      "./shared/models.py": {
+        "lines": 734,
+        "functions": 10,
+        "classes": 33
+      },
+      "./shared/__init__.py": {
+        "lines": 52,
+        "functions": 0,
+        "classes": 0
+      },
+      "./shared/schemas.py": {
+        "lines": 413,
+        "functions": 0,
+        "classes": 31
+      },
+      "./shared/jira_integration.py": {
+        "lines": 419,
+        "functions": 10,
+        "classes": 9
+      },
+      "./mcp_server/ai_service.py": {
+        "lines": 1233,
+        "functions": 29,
+        "classes": 9
+      },
+      "./mcp_server/cache_manager.py": {
+        "lines": 619,
+        "functions": 19,
+        "classes": 6
+      },
+      "./mcp_server/database.py": {
+        "lines": 519,
+        "functions": 18,
+        "classes": 3
+      },
+      "./mcp_server/__init__.py": {
+        "lines": 21,
+        "functions": 0,
+        "classes": 0
+      },
+      "./mcp_server/usage_tracker.py": {
+        "lines": 817,
+        "functions": 22,
+        "classes": 5
+      },
+      "./mcp_server/utils.py": {
+        "lines": 670,
+        "functions": 23,
+        "classes": 0
+      },
+      "./mcp_server/task_manager.py": {
+        "lines": 3870,
+        "functions": 25,
+        "classes": 0
+      },
+      "./mcp_server/__main__.py": {
+        "lines": 36,
+        "functions": 1,
+        "classes": 0
+      },
+      "./mcp_server/claude_code_setup.py": {
+        "lines": 427,
+        "functions": 6,
+        "classes": 0
+      },
+      "./mcp_server/prompts/json_schema_helpers.py": {
+        "lines": 303,
+        "functions": 7,
+        "classes": 0
+      },
+      "./mcp_server/prompts/__init__.py": {
+        "lines": 180,
+        "functions": 3,
+        "classes": 0
+      },
+      "./mcp_server/prompts/lts_research_prompt.py": {
+        "lines": 554,
+        "functions": 7,
+        "classes": 0
+      },
+      "./mcp_server/prompts/best_practices_prompt.py": {
+        "lines": 682,
+        "functions": 8,
+        "classes": 0
+      },
+      "./mcp_server/prompts/add_task_prompt.py": {
+        "lines": 302,
+        "functions": 3,
+        "classes": 0
+      },
+      "./mcp_server/prompts/expand_task_prompt.py": {
+        "lines": 490,
+        "functions": 4,
+        "classes": 0
+      }
+    }
+  },
+  "baseline_kpis": {
+    "code_quality": {
+      "target_test_coverage": "85%",
+      "max_cyclomatic_complexity": 10,
+      "min_maintainability_index": 70,
+      "max_lines_per_file": 500
+    },
+    "architecture": {
+      "max_dependencies_per_module": 15,
+      "max_circular_dependencies": 0,
+      "target_module_cohesion": "high"
+    },
+    "performance": {
+      "max_task_creation_time": "2s",
+      "max_cli_response_time": "1s",
+      "max_ai_call_timeout": "30s"
+    },
+    "maintainability": {
+      "max_technical_debt_ratio": "10%",
+      "min_documentation_coverage": "80%",
+      "max_code_duplication": "5%"
+    }
+  }
+}
