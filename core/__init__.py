@@ -10,7 +10,7 @@ Pure domain layer containing:
 This module has no dependencies on infrastructure or external services.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     # Exceptions
     "PyTaskAIError",

@@ -1,5 +1,117 @@
 # PyTaskAI Changelog
 
+## 0.2.0 - 2024-12-06
+
+### 🏗️ **Major Architectural Improvements**
+
+#### Added
+- **Core Domain Layer**: New `core/` module implementing clean architecture principles
+  - Pure domain models without infrastructure dependencies
+  - Comprehensive exception hierarchy with contextual error handling
+  - Protocol-based abstractions for dependency injection
+  - Centralized constants and business rules
+  - Common utilities with comprehensive test coverage
+
+- **Architectural Roadmap**: Comprehensive PRD and implementation plan
+  - 12 detailed architectural improvement tasks (Tasks 14-25)
+  - 5-phase implementation strategy covering service layer, infrastructure, testing, and documentation
+  - Clear separation of concerns and SOLID principles application
+
+#### Fixed
+- **MCP Tool Integration**: Resolved critical issue with FastMCP tool calling
+  - Fixed `'FunctionTool' object is not callable` error
+  - Implemented proper `.fn` attribute access for external MCP tool calls
+  - Systematic debugging identified and resolved MCP-database disconnect
+
+- **Database Integration**: Enhanced SQLite database functionality
+  - Improved error handling for enum validation
+  - Fixed task creation with proper enum value formatting
+  - Better integration between MCP tools and database layer
+
+#### Improved
+- **Error Handling**: Enhanced exception hierarchy with typed exceptions
+  - `PyTaskAIError` base class with contextual details
+  - Specialized exceptions: `ValidationError`, `ConfigurationError`, `AIServiceError`
+  - `TaskNotFoundError` and `DependencyError` for domain-specific errors
+
+- **Configuration Management**: Centralized configuration constants
+  - AI provider models and cost estimates
+  - Default model configurations by role
+  - Environment variable definitions
+  - Quality metrics thresholds
+
+#### Technical Debt Reduction
+- **Backward Compatibility**: Full compatibility maintained with existing `shared/` module
+  - Import aliases ensure zero breaking changes
+  - Gradual migration path established
+  - Comprehensive migration plan documented
+
+### 🔧 **Infrastructure & Development**
+
+#### Added
+- **Debug Tools**: Systematic debugging utilities for development
+  - MCP tool integration testing scripts
+  - Database connection verification tools
+  - External calling pattern validation
+
+#### Documentation
+- **Architecture Documentation**: Comprehensive architectural improvement PRD
+- **Migration Guide**: Detailed migration strategy with phases and rollback plans
+- **Development Scripts**: Tools for manual task creation and debugging
+
+### 📊 **Task Management**
+
+#### Enhanced
+- **Task Database**: 25 total tasks including 12 new architectural improvement tasks
+  - Phase 2: Service Layer Implementation (Tasks 14-17)
+  - Phase 3: Infrastructure Layer (Tasks 18-21)  
+  - Phase 4: Quality & Testing (Tasks 22-23)
+  - Phase 5: Documentation & Security (Tasks 24-25)
+
+### 🏃‍♂️ **Performance & Reliability**
+
+#### Improved
+- **Database Performance**: Optimized SQLite operations with proper enum handling
+- **MCP Tool Reliability**: Resolved calling issues ensuring consistent tool access
+- **Error Recovery**: Better error context and recovery mechanisms
+
+### 🔬 **Testing & Quality**
+
+#### Added
+- **Debug Test Suite**: Comprehensive testing for MCP tool integration
+- **Integration Verification**: End-to-end testing of database and MCP connectivity
+- **Error Scenario Testing**: Systematic testing of failure modes and recovery
+
+### ⚡ **Next Phase Ready**
+
+The release establishes the foundation for Phase 2 implementation:
+- LLM Provider Factory Pattern (Task 14) - Ready to implement
+- AI Service Orchestration refactoring (Task 15) - Dependencies resolved
+- Enhanced Task Management Service (Task 16) - Architecture in place
+- Multi-tier Cache Service (Task 17) - Specifications defined
+
+### 🔄 **Migration Notes**
+
+This release maintains full backward compatibility. Existing code continues to work without changes:
+
+```python
+# Old way (still works)
+from shared.models import Task, TaskStatus
+
+# New way (recommended)
+from core import Task, TaskStatus
+from core.models import Task, TaskStatus
+```
+
+### 🐛 **Bug Fixes**
+
+- Fixed MCP tool calling pattern for external interfaces
+- Resolved enum validation issues in task creation
+- Corrected database constraint handling for task IDs
+- Fixed asyncio event loop conflicts in AI service integration
+
+---
+
 ## 0.0.5 - 2025-01-06
 
 ### 🚀 Advanced Features
