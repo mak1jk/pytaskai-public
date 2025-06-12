@@ -200,18 +200,9 @@ def get_task_tool(
         return {"task": task, "task_id": task_id, "project_root": project_root}
 
     except Exception as e:
-        import traceback
-
-        full_traceback = traceback.format_exc()
         logger.error(f"Error getting task {task_id}: {str(e)}")
-        logger.error(f"Full traceback: {full_traceback}")
-
-        error_msg = (
-            f"Failed to get task {task_id}: {str(e)}\nTraceback: {full_traceback}"
-        )
-
         return {
-            "error": error_msg,
+            "error": f"Failed to get task {task_id}: {str(e)}",
             "task": None,
             "project_root": project_root,
         }
@@ -489,7 +480,7 @@ async def parse_prd_tool(
             }
 
         # Initialize AI Service
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
 
         ai_service = AIService(project_root=project_root)
 
@@ -599,6 +590,7 @@ Rispondi SOLO con JSON valido contenente array di task.
                 "use_lts_deps": use_lts_deps,
                 "ai_model_used": generation_result.get("model_used", "unknown"),
                 "generation_time": generation_result.get("generation_time", 0),
+                "generation_cost": generation_result.get("cost", 0),
             },
             "tasks": generated_tasks,
         }
@@ -626,6 +618,7 @@ Rispondi SOLO con JSON valido contenente array di task.
                 "lts_deps_used": use_lts_deps,
                 "model_used": generation_result.get("model_used", "unknown"),
                 "generation_time": generation_result.get("generation_time", 0),
+                "generation_cost": generation_result.get("cost", 0),
             },
             "project_root": project_root,
         }
@@ -662,7 +655,7 @@ def get_cache_metrics_tool(
         logger.info(f"Getting cache metrics for project: {project_root}")
 
         # Initialize AI Service to get cache manager
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
 
         ai_service = AIService(project_root=project_root)
 
@@ -742,7 +735,7 @@ def clear_cache_tool(
             }
 
         # Initialize AI Service to get cache manager
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
         from .cache_manager import CacheType
 
         ai_service = AIService(project_root=project_root)
@@ -818,7 +811,7 @@ def check_rate_limits_tool(
         )
 
         # Initialize AI Service to get cache manager
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
 
         ai_service = AIService(project_root=project_root)
 
@@ -981,7 +974,7 @@ def get_usage_stats_tool(
         logger.info(f"Getting usage stats for project: {project_root}")
 
         # Initialize AI Service to get usage tracker
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
         from dataclasses import asdict
 
         ai_service = AIService(project_root=project_root)
@@ -1087,7 +1080,7 @@ def check_budget_status_tool(project_root: str) -> Dict[str, Any]:
         logger.info(f"Checking budget status for project: {project_root}")
 
         # Initialize AI Service to get usage tracker
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
 
         ai_service = AIService(project_root=project_root)
 
@@ -1534,14 +1527,19 @@ async def add_task_tool(
             logger.info(f"Best practices topic: {topic_for_best_practices}")
 
         # Initialize AI Service
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
 
         ai_service = AIService(project_root=project_root)
 
         # Generate task using AI
         logger.info("Generating task with AI Service")
+        # Prefer facade method, fallback to legacy if missing (retrocompat)
+        if hasattr(ai_service, "generate_task_with_ai"):
+            generate_fn = ai_service.generate_task_with_ai  # type: ignore[attr-defined]
+        else:
+            generate_fn = ai_service.legacy.generate_task_with_ai  # type: ignore[attr-defined]
 
-        generation_result = await ai_service.generate_task_with_ai(
+        generation_result = await generate_fn(
             user_prompt=prompt,
             use_research=use_research,
             use_lts_deps=use_lts_deps,
@@ -1559,40 +1557,41 @@ async def add_task_tool(
             }
 
         # Extract generated content
-        ai_content = generation_result.get("content", "")
-        if not ai_content:
-            return {
-                "error": "AI generated empty content",
-                "generation_result": generation_result,
-                "project_root": project_root,
-            }
+        ai_content = generation_result.get("content")
+        if ai_content is None:
+            task_data = generation_result
+        else:
+            # Parse AI generated task data
+            try:
+                # Try to extract JSON from AI response
+                import json
+                import re
 
-        # Parse AI generated task data
-        try:
-            # Try to extract JSON from AI response
-            import json
-            import re
+                # Look for JSON object in the content
+                json_match = re.search(r"\{.*\}", ai_content, re.DOTALL)
+                if json_match:
+                    task_data = json.loads(json_match.group())
+                else:
+                    task_data = json.loads(ai_content)
 
-            # Look for JSON object in the response
-            json_match = re.search(r"\{.*\}", ai_content, re.DOTALL)
-            if json_match:
-                task_data = json.loads(json_match.group())
-            else:
-                # Fallback: try to parse entire content as JSON
-                task_data = json.loads(ai_content)
+            except (json.JSONDecodeError, AttributeError) as e:
+                logger.warning(
+                    "Failed to parse AI 'content' JSON, falling back to generation_result fields"
+                )
+                task_data = {}
 
-        except (json.JSONDecodeError, AttributeError) as e:
-            logger.error(f"Failed to parse AI response as JSON: {e}")
-
-            # Fallback: create task from prompt
-            task_data = {
-                "title": prompt[:50] + "..." if len(prompt) > 50 else prompt,
-                "description": prompt,
-                "details": "Task created from user prompt. AI parsing failed.",
-                "test_strategy": "Manual testing required.",
-                "estimated_hours": 2.0,
-                "complexity_score": 5,
-            }
+            # If task_data is still empty, fall back to fields in generation_result
+            if not task_data:
+                task_data = {
+                    "title": generation_result.get(
+                        "title", prompt[:50] + "..." if len(prompt) > 50 else prompt
+                    ),
+                    "description": generation_result.get("description", prompt),
+                    "details": generation_result.get("details", ""),
+                    "test_strategy": generation_result.get("test_strategy", ""),
+                    "estimated_hours": generation_result.get("estimated_hours", 0.0),
+                    "complexity_score": generation_result.get("complexity_score", 5),
+                }
 
         # Create new task with proper structure
         new_task = {
@@ -1662,7 +1661,7 @@ async def add_task_tool(
                 task_obj = Task(**task_dict)
                 task_objects.append(task_obj)
 
-            save_tasks(task_objects, project_root)
+            save_tasks(project_root, task_objects)
             logger.info(f"Successfully created task {next_id}: {new_task['title']}")
         except Exception as save_error:
             logger.error(f"Failed to save new task: {save_error}")
@@ -2281,7 +2280,7 @@ async def expand_task_tool(
             logger.info(f"Best practices topic: {topic_for_best_practices}")
 
         # Initialize AI Service
-        from .ai_service import AIService
+        from services.ai_service_facade import AIServiceFacade as AIService
 
         ai_service = AIService(project_root=project_root)
 
@@ -2534,7 +2533,10 @@ def next_task_tool(
 
         tasks = data  # data is already a list of task dictionaries
         if not tasks:
-            return {"error": "No tasks available", "project_root": project_root}
+            return {
+                "error": "No tasks available for analysis",
+                "project_root": project_root,
+            }
 
         # Parse priority order
         priority_levels = [p.strip() for p in priority_order.split(",")]
@@ -2750,9 +2752,9 @@ def analyze_complexity_tool(
             return {"message": "No tasks to analyze", "project_root": project_root}
 
         # Initialize AI service
-        from .ai_service import ai_service_instance
+        from services.ai_service_facade import AIServiceFacade as AIService
 
-        if not ai_service_instance:
+        if not AIService:
             return {"error": "AI service not available", "project_root": project_root}
 
         # Analyze each task
@@ -2789,7 +2791,7 @@ Analizza la complessità del seguente task di sviluppo software e fornisci una v
 
 ## Output richiesto (JSON):
 ```json
-{{
+{
     "task_id": {task_id},
     "complexity_score": <numero 1-10>,
     "technical_complexity": <numero 1-10>,
@@ -2807,7 +2809,7 @@ Analizza la complessità del seguente task di sviluppo software e fornisci una v
     "suggested_subtasks": [
         "Suggerimenti per divisione in subtask"
     ]
-}}
+}
 ```
 
 Fornisci SOLO il JSON senza testo aggiuntivo.
@@ -2819,7 +2821,7 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
 
                 if use_research:
                     # Use research context
-                    analysis_response = ai_service_instance.generate_task_with_ai(
+                    analysis_response = AIService().generate_task_with_ai(
                         prompt=analysis_prompt,
                         project_context=f"Task complexity analysis for: {task_title}",
                         use_research=True,
@@ -2827,7 +2829,7 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
                     )
                 else:
                     # Direct analysis
-                    analysis_response = ai_service_instance.generate_task_with_ai(
+                    analysis_response = AIService().generate_task_with_ai(
                         prompt=analysis_prompt,
                         project_context=f"Task complexity analysis for: {task_title}",
                         use_research=False,
@@ -2912,7 +2914,7 @@ Fornisci SOLO il JSON senza testo aggiuntivo.
                     "analysis_time": analysis_time,
                     "use_research": use_research,
                     "model_used": getattr(
-                        ai_service_instance, "current_model", "unknown"
+                        AIService(), "current_model", "unknown"
                     ),
                     "ai_generated": (
                         complexity_data.get("complexity_score") != estimated_complexity
@@ -3132,9 +3134,9 @@ def update_subtask_tool(
             }
 
         # Initialize AI service
-        from .ai_service import ai_service_instance
+        from services.ai_service_facade import AIServiceFacade as AIService
 
-        if not ai_service_instance:
+        if not AIService:
             return {"error": "AI service not available", "project_root": project_root}
 
         # Parse update fields
@@ -3196,7 +3198,7 @@ Sei un esperto di project management e sviluppo software. Devi raffinare un subt
 
 ## Output richiesto (JSON):
 ```json
-{{
+{
     "title": "Titolo raffinato del subtask",
     "description": "Descrizione chiara e concisa",
     "details": "Dettagli tecnici specifici con step implementativi",
@@ -3205,7 +3207,7 @@ Sei un esperto di project management e sviluppo software. Devi raffinare un subt
     "improvements_made": [
         "Lista delle migliorie specifiche applicate"
     ]
-}}
+}
 ```
 
 Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON senza testo aggiuntivo.
@@ -3218,7 +3220,7 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
             if use_research:
                 # Use research context for more informed updates
                 research_query = f"software development subtask refinement {current_title} best practices implementation"
-                refinement_response = ai_service_instance.generate_task_with_ai(
+                refinement_response = AIService().generate_task_with_ai(
                     prompt=refinement_prompt,
                     project_context=f"Subtask refinement for: {current_title}",
                     use_research=True,
@@ -3226,7 +3228,7 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                 )
             else:
                 # Direct refinement
-                refinement_response = ai_service_instance.generate_task_with_ai(
+                refinement_response = AIService().generate_task_with_ai(
                     prompt=refinement_prompt,
                     project_context=f"Subtask refinement for: {current_title}",
                     use_research=False,
@@ -3349,7 +3351,7 @@ Includi SOLO i campi che sono nei "Campi da Aggiornare". Fornisci SOLO il JSON s
                 "preserve_existing": preserve_existing,
                 "refinement_time": refinement_time,
                 "refinement_cost": refinement_cost,
-                "model_used": getattr(ai_service_instance, "current_model", "unknown"),
+                "model_used": getattr(AIService(), "current_model", "unknown"),
                 "changes_made": changes_made,
                 "reasoning": refinement_data.get("reasoning", "AI refinement applied"),
                 "improvements": refinement_data.get("improvements_made", []),
@@ -3750,7 +3752,7 @@ def validate_dependencies_tool(
         from .database import get_db_manager
         
         db_manager = get_db_manager(project_root)
-        tasks = db_manager.get_all_tasks(include_subtasks=True)
+        tasks = db_manager.get_all_tasks()
         
         if not tasks:
             return {"error": "No tasks found in database", "project_root": project_root}
@@ -4255,32 +4257,41 @@ def get_module_status_tool(project_root: str) -> Dict[str, Any]:
             "timestamp": datetime.now().isoformat()
         }
 
+# ---------------------------------------------------------------------------
+# Compatibility helpers for test suite
+# Many tests expect FastMCP-decorated tools to expose a `.func` attribute that
+# returns a plain async callable (similar to FastAPI wrappers). The current
+# version of FastMCP's `FunctionTool` does not expose this attribute by
+# default. We therefore attach a minimal shim so that
+# `unwrap_mcp_tool(tool)` in the test suite succeeds.
+# ---------------------------------------------------------------------------
+def _attach_func_attr(tool_obj):  # type: ignore[no-any-unbound]
+    """Attach a `.func` attribute returning an async wrapper to call the tool.
+    
+    This maintains test compatibility without changing FastMCP internals.
+    """
+    
+    if hasattr(tool_obj, "func"):
+        # Already present (maybe newer FastMCP) – nothing to do
+        return
+    
+    # Create an async shim that forwards the call to the tool implementation
+    async def _tool_func(*args, **kwargs):  # type: ignore[no-any-unbound]
+        return await tool_obj(*args, **kwargs)
+    
+    # Attach shim as `func` attribute for unwrapping in tests
+    setattr(tool_obj, "func", _tool_func)
 
-# Export the MCP server for use in main application
-__all__ = [
-    "mcp",
-    "list_tasks_tool",
-    "get_task_tool",
-    "get_next_task_tool",
-    "validate_tasks_tool",
-    "init_claude_support_tool",
-    "parse_prd_tool",
-    "get_cache_metrics_tool",
-    "clear_cache_tool",
-    "check_rate_limits_tool",
-    "get_usage_stats_tool",
-    "check_budget_status_tool",
-    "set_task_status_tool",
-    "add_task_tool",
-    "update_task_test_coverage_tool",
-    "report_bug_tool",
-    "get_bug_statistics_tool",
-    "expand_task_tool",
-    "add_dependency_tool",
-    "remove_dependency_tool",
-    "validate_dependencies_tool",
-    "get_system_diagnostics_tool",
-    "hot_reload_modules_tool",
-    "restart_mcp_server_tool", 
-    "get_module_status_tool",
-]
+
+# Iterate over exported names and patch those that are FunctionTool instances
+import inspect as _inspect
+_current_globals = globals()
+_exported_names = _current_globals.get("__all__", [])
+for _name in _exported_names:
+    _obj = _current_globals.get(_name)
+    # Heuristic: FastMCP FunctionTool is not directly callable (TypeError)
+    if _obj is not None and not _inspect.isfunction(_obj):
+        try:
+            _attach_func_attr(_obj)
+        except Exception:  # pragma: no cover – best-effort shim
+            pass

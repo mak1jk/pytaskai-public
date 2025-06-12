@@ -26,7 +26,7 @@ from mcp_server.task_manager import (
     add_task_tool,
     update_task_test_coverage_tool,
 )
-from mcp_server.ai_service import AIService
+from services.ai_service_facade import AIServiceFacade as AIService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -221,7 +221,7 @@ def render_task_card(task: Dict[str, Any]):
     priority = task.get("priority", "medium")
     
     # Card container with color coding based on type and priority
-    type_colors = {
+    _type_colors = {
         "bug": "#ffebee",      # Light red
         "feature": "#e3f2fd",  # Light blue
         "task": "#f5f5f5",     # Light gray
@@ -230,7 +230,7 @@ def render_task_card(task: Dict[str, Any]):
         "documentation": "#e8f5e8" # Light green
     }
     
-    priority_borders = {
+    _priority_borders = {
         "highest": "#d32f2f",  # Red
         "high": "#f57c00",     # Orange
         "medium": "#1976d2",   # Blue
@@ -277,20 +277,20 @@ def render_task_card(task: Dict[str, Any]):
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            if st.button(f"📝 Edit", key=f"edit_{task_id}"):
+            if st.button("📝 Edit", key=f"edit_{task_id}"):
                 st.session_state.selected_task_id = task_id
                 st.session_state.show_edit_modal = True
         
         with col2:
-            if st.button(f"🔍 Details", key=f"details_{task_id}"):
+            if st.button("🔍 Details", key=f"details_{task_id}"):
                 show_task_details(task)
         
         with col3:
-            if task_type != "bug" and st.button(f"🐛 Report Bug", key=f"bug_{task_id}"):
+            if task_type != "bug" and st.button("🐛 Report Bug", key=f"bug_{task_id}"):
                 st.session_state.create_bug_for_task = task_id
         
         with col4:
-            if st.button(f"📊 Update Coverage", key=f"coverage_{task_id}"):
+            if st.button("📊 Update Coverage", key=f"coverage_{task_id}"):
                 st.session_state.update_coverage_task = task_id
         
         st.markdown("---")
@@ -594,7 +594,7 @@ def show_prd_parser():
                 disabled=True,
             )
     else:
-        prd_text = st.text_area(
+        _prd_text = st.text_area(
             "Paste PRD Content",
             height=300,
             placeholder="Paste your PRD content here...",
@@ -603,9 +603,9 @@ def show_prd_parser():
     # Parsing options
     col1, col2 = st.columns(2)
     with col1:
-        num_tasks = st.slider("Number of Tasks to Generate", 5, 30, 10)
+        _num_tasks = st.slider("Number of Tasks to Generate", 5, 30, 10)
     with col2:
-        use_research = st.checkbox("Enable AI Research", value=True)
+        _use_research = st.checkbox("Enable AI Research", value=True)
 
     if st.button("🚀 Parse PRD and Generate Tasks", type="primary"):
         st.info("PRD parsing would be initiated here...")
@@ -649,13 +649,13 @@ def show_settings():
     st.subheader("🔑 API Configuration")
 
     with st.expander("AI Model Settings"):
-        openai_key = st.text_input("OpenAI API Key", type="password")
-        anthropic_key = st.text_input("Anthropic API Key", type="password")
-        perplexity_key = st.text_input("Perplexity API Key", type="password")
+        _openai_key = st.text_input("OpenAI API Key", type="password")
+        _anthropic_key = st.text_input("Anthropic API Key", type="password")
+        _perplexity_key = st.text_input("Perplexity API Key", type="password")
 
     with st.expander("Project Settings"):
-        project_name = st.text_input("Project Name", value="My Project")
-        project_root = st.text_input(
+        _project_name = st.text_input("Project Name", value="My Project")
+        _project_root_input = st.text_input(
             "Project Root Directory", value=st.session_state.project_root
         )
 

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 # Import test utilities for direct testing
-from test_utils import TaskTestHelper
+from tests.test_utils import TaskTestHelper
 
 # Import models
 from shared.models import Task, TaskType, BugSeverity, TaskStatus, TaskPriority

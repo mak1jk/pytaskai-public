@@ -160,7 +160,7 @@ class AIService:
         total_tokens = input_tokens + output_tokens
 
         # Use model cost from config
-        model_config = self._get_model_config(model_name)
+        model_config, _ = self._get_model_config(model_name)
         cost_per_1k = model_config.cost_per_1k_tokens
         return (total_tokens / 1000) * cost_per_1k
 
