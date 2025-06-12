@@ -7,7 +7,7 @@ name = "pytaskai"
 version = "0.2.0"
 description = "AI-powered task management system with MCP (Model Context Protocol) integration for seamless workflow automation"
 readme = "README.md"
-license = {text = "MIT with Commons Clause"}
+license = {text = "MIT"}
 authors = [
     {name = "PyTaskAI Contributors", email = "noreply@pytaskai.dev"}
 ]
@@ -93,7 +93,14 @@ pytaskai-minimal = "pytaskai_minimal:main"
 pytaskai-setup = "setup_cli:main"
 
 [tool.setuptools]
-packages = ["mcp_server", "mcp_server.prompts", "shared", "frontend"]
+packages = [
+    "mcp_server", 
+    "mcp_server.prompts", 
+    "mcp_server.security",
+    "shared", 
+    "frontend",
+    "frontend.components"
+]
 
 [tool.setuptools.package-data]
 "mcp_server" = ["prompts/*.py", "*.py"]
