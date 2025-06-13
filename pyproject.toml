@@ -16,7 +16,7 @@ keywords = [
     "domain-driven-design", "openai", "fastmcp"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
@@ -46,6 +46,7 @@ dependencies = [
     
     # CLI interface
     "click>=8.0.0",
+    "tabulate>=0.9.0",
     
     # Configuration management
     "python-dotenv>=1.0.0",
@@ -55,9 +56,12 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.20.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "mypy>=1.0.0",
+    "flake8>=6.0.0",
+    "types-tabulate>=0.9.0",
 ]
 
 [project.urls]
@@ -108,4 +112,16 @@ source = ["pytaskai"]
 omit = [
     "*/tests/*",
     "*/test_*",
+]
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
 ]
