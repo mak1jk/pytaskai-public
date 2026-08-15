@@ -1,0 +1,9 @@
+{
+    "mcpServers": {
+        "pytaskai": {
+            "command": "python",
+            "args": ["-m", "mcp_server"],
+            "cwd": "/absolute/path/to/pytaskai-public"
+        }
+    }
+}
